@@ -1,22 +1,23 @@
 /**
- * PROVIDER DO ERP D9  (a implementar)
+ * PROVIDER DO ERP D9Pro  (conector — em implementação)
  * ----------------------------------------------------------------------------
- * Este é o conector para o ERP real da D9. Hoje é um ESQUELETO: ele só vira
- * "configurado" quando as variáveis de ambiente abaixo estiverem definidas, e
- * as funções `financeiro`/`vendas` ainda precisam ser escritas conforme a API
- * do ERP (endpoints, autenticação e formato de resposta).
+ * Conector para a "D9Pro API" (OpenAPI 3.0). Documentação/spec da instância:
+ *   https://healthycann.d9pro.com/api/api.yaml
  *
- * O que falta para ligar os dados reais:
- *   1. Definir as variáveis no .env:
- *        D9_API_URL   = base da API do ERP D9 (ex.: https://api.exemplo/v1)
- *        D9_API_TOKEN = token/credencial de acesso  (ou D9_API_KEY/secret)
- *   2. Implementar `chamar()` com a autenticação que o ERP exige.
- *   3. Mapear a resposta do ERP para o CONTRATO (ver erp/contrato.js):
- *        - balanço, DRE, série mensal, contas a pagar/receber, categorias.
- *        - Healthycann NÃO usa SCP → projetos/scpsDisponiveis/escopo vazios.
+ * Detalhes confirmados pela doc:
+ *   - URL base: https://<instancia>.d9pro.com/api   (instância = "healthycann")
+ *   - Autenticação: header  token: <seu_token>      (NÃO é Bearer)
+ *     ex.: token: 12345_aaaddd
+ *   - Endpoints são arquivos .php (ex.: GET /user/me.php).
  *
- * Enquanto não estiver implementado, o servidor cai para `mock` (se
- * ERP_PROVIDER=mock) ou responde 503 e o painel mostra dados de exemplo.
+ * `chamar()` e `testarConexao()` já estão prontos para a autenticação real.
+ * Falta mapear os endpoints financeiros (balanço, títulos, categorias, notas)
+ * para o CONTRATO (ver erp/contrato.js) — depende de lermos o api.yaml para
+ * saber os caminhos exatos.
+ *
+ * Configuração no .env:
+ *   D9_API_URL   = https://healthycann.d9pro.com/api
+ *   D9_API_TOKEN = <token gerado no D9Pro>
  */
 import { contratoVazio, montarDRE, resumirLista } from "./contrato.js";
 
@@ -26,47 +27,54 @@ const API_TOKEN = process.env.D9_API_TOKEN || "";
 export const nome = "d9";
 export const configurado = Boolean(API_URL && API_TOKEN);
 
-/** Chamada genérica ao ERP D9. Ajuste a autenticação conforme a API real. */
+/** Chamada à D9Pro API. Auth via header `token`, conforme a documentação. */
 async function chamar(caminho, params = {}) {
-  const url = new URL(caminho.replace(/^\//, ""), API_URL.endsWith("/") ? API_URL : API_URL + "/");
+  const base = API_URL.endsWith("/") ? API_URL : API_URL + "/";
+  const url = new URL(caminho.replace(/^\//, ""), base);
   for (const [k, v] of Object.entries(params)) {
     if (v != null) url.searchParams.set(k, v);
   }
   const resp = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${API_TOKEN}`,
+      token: API_TOKEN,
       Accept: "application/json",
     },
   });
-  if (!resp.ok) throw new Error(`ERP D9 respondeu HTTP ${resp.status} em ${caminho}`);
+  if (!resp.ok) {
+    const corpo = await resp.text().catch(() => "");
+    throw new Error(`D9Pro API HTTP ${resp.status} em ${caminho}${corpo ? ` — ${corpo.slice(0, 200)}` : ""}`);
+  }
   return resp.json();
+}
+
+/** Testa a conexão/autenticação batendo no endpoint do usuário atual. */
+export async function testarConexao() {
+  return chamar("/user/me.php");
 }
 
 export async function financeiro({ inicio, fim } = {}) {
   if (!configurado) {
-    throw new Error("ERP D9 não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
+    throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
   }
 
-  // TODO: substituir pelos endpoints reais do ERP D9 e mapear para o contrato.
-  // Exemplo do esqueleto (não chama nada ainda):
+  // TODO: mapear os endpoints reais da D9Pro API (ver api.yaml) para o contrato.
+  // Quando soubermos os caminhos, algo como:
   //
-  //   const balanco   = await chamar("balanco",   { inicio, fim });
-  //   const titulos   = await chamar("titulos",   { inicio, fim });
-  //   const categorias = await chamar("categorias", { inicio, fim });
-  //   ... montar o objeto do contrato a partir disso ...
+  //   const titulos    = await chamar("/financeiro/titulos.php", { inicio, fim });
+  //   const categorias = await chamar("/financeiro/categorias.php", { inicio, fim });
+  //   ... montar balanço/DRE/série/contas a partir disso ...
 
   const base = contratoVazio("Healthycann");
-  base.periodo = `${inicio || ""} a ${fim || ""} — ERP D9`;
-  // Quando implementar, preencha base.balanco / base.dre (use montarDRE) /
-  // base.serieMensal / base.contas (use resumirLista) / base.porCategoria etc.
-  void montarDRE; void resumirLista; // disponíveis para a implementação
+  base.periodo = `${inicio || ""} a ${fim || ""} — D9Pro`;
+  // Helpers disponíveis para a implementação:
+  void montarDRE; void resumirLista;
   return base;
 }
 
 export async function vendas({ inicio, fim } = {}) {
   if (!configurado) {
-    throw new Error("ERP D9 não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
+    throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
   }
-  // TODO: implementar conforme a API de faturamento/notas do ERP D9.
+  // TODO: implementar conforme a API de faturamento/notas da D9Pro.
   return { total: 0, qtdNotas: 0, qtdItens: 0, porSCP: [], porProduto: [], porNota: [] };
 }
