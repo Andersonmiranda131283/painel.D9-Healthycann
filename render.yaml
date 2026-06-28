@@ -1,0 +1,27 @@
+# Blueprint do Render — sobe o painel da Healthycann como Web Service.
+# Importe este repositório em https://dashboard.render.com → New → Blueprint.
+# As variáveis com sync:false você preenche no painel do Render (ficam secretas).
+services:
+  - type: web
+    name: painel-d9-healthycann
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node d9-conector.js
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Fonte de dados: "mock" para exemplo, "d9" para o ERP real
+      - key: ERP_PROVIDER
+        sync: false
+      # Credenciais do ERP D9 (sem elas, o painel abre com dados de exemplo)
+      - key: D9_API_URL
+        sync: false
+      - key: D9_API_TOKEN
+        sync: false
+      # Login do painel (defina os dois para proteger com senha)
+      - key: PAINEL_USUARIO
+        sync: false
+      - key: PAINEL_SENHA
+        sync: false

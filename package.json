@@ -1,0 +1,25 @@
+{
+  "name": "painel-d9-healthycann",
+  "version": "0.1.0",
+  "description": "Painel financeiro da Healthycann — servidor Node.js que serve o painel e conecta ao ERP da D9",
+  "type": "module",
+  "main": "d9-conector.js",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node build.js && node --env-file-if-exists=.env d9-conector.js",
+    "dev": "node build.js --watch & node --env-file-if-exists=.env --watch d9-conector.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "recharts": "^3.9.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  }
+}
