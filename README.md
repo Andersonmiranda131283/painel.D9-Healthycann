@@ -1,91 +1,84 @@
-# Painel Financeiro — Healthycann
+# Painel de Faturamento — Healthycann
 
-Painel financeiro da **Healthycann**: um único servidor Node.js que **serve o
-painel** e a **API de dados** no mesmo lugar. Você roda um comando, abre o
-navegador e vê o painel funcionando — com dados de exemplo até conectar o ERP,
-e com dados reais depois disso.
+Painel de **faturamento e operação** da **Healthycann**: um único servidor
+Node.js que **serve o painel** e a **API de dados** no mesmo lugar, alimentado
+pela **D9Pro API** (sistema de pedidos da D9). Você roda um comando, abre o
+navegador e vê o painel — com dados de exemplo até configurar o token, e com
+dados reais depois disso.
 
-Estrutura herdada do painel da Health Importer (`painel-omie`), porém **sem
-SCP** (a Healthycann não trabalha com Sociedades em Conta de Participação) e com
-a fonte de dados trocada da Omie por um **conector de ERP plugável** (a ligar no
-ERP da D9).
+> A D9Pro é um sistema de **pedidos / operação** (não de contabilidade). Por
+> isso o painel é de **faturamento** (receita, pedidos, ticket, status,
+> produtos), e não de DRE/Balanço. Ver `docs/d9pro-endpoints.md`.
 
 ## Pré-requisitos
 
-- Node.js **20.12 ou superior** (usa `fetch` nativo e a flag `--env-file-if-exists`)
+- Node.js **20.12 ou superior**
 
 ## Como rodar
 
 ```bash
-# 1. instale as dependências
 npm install
-
-# 2. suba o app (faz o build do painel e inicia o servidor)
-npm start
+npm start          # faz o build do painel e inicia o servidor
 ```
 
-Abra **http://localhost:3001**. O painel já aparece com **dados de exemplo**,
-sem precisar de configuração nenhuma.
+Abra **http://localhost:3001**. O painel já aparece com **dados de exemplo**.
 
-### Ver o painel "ao vivo" com dados de exemplo (mock)
-
-Para exercitar o caminho de dados ao vivo sem o ERP real:
+### Ver "ao vivo" com dados de exemplo (mock)
 
 ```bash
 ERP_PROVIDER=mock npm start
 ```
 
-### Conectar o ERP real da D9
+### Conectar a D9Pro real
 
-1. Copie o `.env.example` para `.env` e preencha:
+1. Copie `.env.example` para `.env` e preencha:
    ```
-   D9_API_URL=...      # base da API do ERP D9
-   D9_API_TOKEN=...    # token/credencial de acesso
+   D9_API_URL=https://healthycann.d9pro.com/api
+   D9_API_TOKEN=<seu token da D9Pro>
    ```
-2. Implemente as chamadas reais em **`erp/d9.js`** (hoje é um esqueleto):
-   buscar balanço, títulos a pagar/receber, categorias e notas, e mapear para o
-   **contrato** descrito em `erp/contrato.js`.
-3. `npm start` — com as credenciais válidas, o painel passa a mostrar os dados
-   reais.
+2. Valide o acesso: `npm run testar-erp` (bate em `/user/me.php`).
+3. `npm start` — com o token válido, o painel mostra os dados reais.
+
+## Abas do painel
+
+- **Visão geral** — faturamento total, nº de pedidos, ticket médio; faturamento
+  por mês (gráfico); por status e por grupo de pedido.
+- **Pedidos** — tabela de pedidos do período, filtro por status e export CSV.
+- **Produtos** — catálogo (preço/custo/margem na próxima iteração do conector).
 
 ## Arquitetura
 
 | Arquivo | Papel |
 | --- | --- |
-| `d9-conector.js` | Servidor Express: serve o painel e a API (`/api/financeiro`, `/api/vendas`). Login opcional por senha. |
-| `painel-financeiro.jsx` | Painel React (empacotado por esbuild → `public/app.js`). |
+| `d9-conector.js` | Servidor Express: serve o painel e a API (`/api/operacao`, `/api/produtos`). Login opcional. |
+| `painel-faturamento.jsx` | Painel React (empacotado por esbuild → `public/app.js`). |
 | `build.js` | Build do front-end (esbuild). |
-| `erp/contrato.js` | Formato dos dados que o painel espera + helpers (`montarDRE`, `resumirLista`). |
-| `erp/mock.js` | Provider de exemplo (dados fictícios da Healthycann). |
-| `erp/d9.js` | Provider do ERP real da D9 — **a implementar**. |
-| `erp/index.js` | Escolhe o provider (via `ERP_PROVIDER` ou detecção automática). |
+| `erp/contrato.js` | Formato dos dados + agregação de pedidos (`agregarPedidos`). |
+| `erp/d9.js` | Conector da D9Pro (pedidos → faturamento). |
+| `erp/mock.js` | Provider de exemplo. |
+| `erp/index.js` | Escolhe o provider (`ERP_PROVIDER` ou detecção automática). |
+| `docs/d9pro-endpoints.md` | Catálogo dos endpoints da D9Pro API. |
 
-### Como os dados chegam ao painel
+### Fluxo dos dados
 
 ```
-painel-financeiro.jsx  →  GET /api/financeiro  →  d9-conector.js  →  provider (mock | d9)
+painel-faturamento.jsx  →  GET /api/operacao  →  d9-conector.js  →  provider (mock | d9)
+                                                                       └─ d9: /orders/list.php + /orders/status.php
 ```
 
-O painel sempre tem um **fallback**: se a API responder erro/503, ele mostra os
-dados de exemplo embutidos, então a tela nunca fica em branco.
-
-## Abas do painel
-
-Visão geral · Apresentação · Contas · Categorias · Vendas · DRE · Orçamento ·
-Conciliação · Indicadores · Fluxo de caixa · Valuation.
-
-*(A aba “SCPs” do painel da Health Importer foi removida — a Healthycann não usa SCP.)*
+Sem token configurado, `/api/operacao` responde 503 e o painel usa os dados de
+exemplo embutidos — a tela nunca fica em branco.
 
 ## Variáveis de ambiente
 
-Veja `.env.example`. Resumo:
+Ver `.env.example`:
 
-- `ERP_PROVIDER` — `mock` (exemplo) ou `d9` (ERP real). Em branco: D9 se configurado, senão exemplo.
-- `D9_API_URL`, `D9_API_TOKEN` — credenciais do ERP D9.
+- `D9_API_URL`, `D9_API_TOKEN` — credenciais da D9Pro (auth via header `token`).
+- `ERP_PROVIDER` — `mock` (exemplo) ou `d9` (real). Em branco: D9 se configurado.
 - `PAINEL_USUARIO`, `PAINEL_SENHA` — protegem o painel com login (defina os dois).
-- `PORT` — porta do servidor (padrão 3001).
+- `PORT` — porta (padrão 3001).
 
 ## Deploy
 
-`render.yaml` está pronto para deploy no [Render](https://render.com) como Web
-Service (build `npm install && npm run build`, start `node d9-conector.js`).
+`render.yaml` pronto para o [Render](https://render.com) (build
+`npm install && npm run build`, start `node d9-conector.js`).

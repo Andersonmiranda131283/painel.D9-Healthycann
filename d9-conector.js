@@ -64,7 +64,7 @@ function periodoDaQuery(req) {
   };
 }
 
-app.get("/api/financeiro", async (req, res) => {
+app.get("/api/operacao", async (req, res) => {
   if (!provider.configurado) {
     return res.status(503).json({
       erro: "ERP não configurado",
@@ -74,7 +74,7 @@ app.get("/api/financeiro", async (req, res) => {
   }
   try {
     const { inicio, fim } = periodoDaQuery(req);
-    const dados = await provider.financeiro({ inicio, fim });
+    const dados = await provider.operacao({ inicio, fim });
     res.json({ ...dados, protegido: AUTH_ATIVA }); // protegido → painel mostra "Sair"
   } catch (err) {
     console.error(err);
@@ -82,17 +82,16 @@ app.get("/api/financeiro", async (req, res) => {
   }
 });
 
-app.get("/api/vendas", async (req, res) => {
+app.get("/api/produtos", async (req, res) => {
   if (!provider.configurado) {
     return res.status(503).json({ erro: "ERP não configurado" });
   }
   try {
-    const { inicio, fim } = periodoDaQuery(req);
-    const dados = await provider.vendas({ inicio, fim });
+    const dados = await provider.produtos();
     res.json(dados);
   } catch (err) {
     console.error(err);
-    res.status(502).json({ erro: "Falha ao consultar vendas no ERP", detalhe: String(err.message) });
+    res.status(502).json({ erro: "Falha ao consultar produtos no ERP", detalhe: String(err.message) });
   }
 });
 

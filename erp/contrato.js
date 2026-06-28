@@ -1,62 +1,33 @@
 /**
- * CONTRATO DE DADOS DO PAINEL
+ * CONTRATO DE DADOS DO PAINEL DE FATURAMENTO/OPERAÇÃO (Healthycann)
  * ----------------------------------------------------------------------------
- * Tudo que o painel (painel-financeiro.jsx → GET /api/financeiro) espera receber.
- * Qualquer provider de ERP (mock, D9, etc.) deve devolver um objeto com este
- * formato. Mantenha os NOMES dos campos — o painel lê por nome.
- *
- * A Healthycann NÃO usa SCP, então `projetos`, `scpsDisponiveis` e `escopo`
- * ficam vazios/nulos. Eles continuam no contrato só para o painel (herdado do
- * molde painel-omie) não quebrar.
+ * Formato que o painel (painel-faturamento.jsx → GET /api/operacao) espera.
+ * Qualquer provider (mock, d9) deve devolver este formato. A fonte é a D9Pro,
+ * que é um sistema de PEDIDOS (não de contabilidade) — por isso o painel é de
+ * faturamento/operação, e não de DRE/Balanço.
  *
  *   {
  *     nome: "Healthycann",
- *     periodo: "01/01/2025 a 31/12/2025 — dados ERP D9",
- *     balanco: { caixa, contasReceber, fornecedores, estoques, imobilizado,
- *                intangivel, emprestimosCP, obrigacoes, emprestimosLP,
- *                patrimonioLiquido },
- *     dre: { receitaBruta, deducoes, receitaLiquida, cmv, lucroBruto,
- *            despesasOper, ebitda, depreciacao, ebit, resultadoFinanceiro,
- *            lair, impostos, lucroLiquido },
- *     serieMensal: [{ mes, receita, custos }],          // R$ cheios
- *     contas: { receber: ListaTitulos, pagar: ListaTitulos },
- *     porCategoria: [{ codigo, nome, receita, despesa, resultado, aReceber, aPagar }],
- *     categoriasMensal: [{ codigo, nome, valores:[12], total }],
- *     dreMensal: [{ mes, receitaBruta, deducoes, receitaLiquida, cmv,
- *                   lucroBruto, despesasOper, ebitda, depreciacao, ebit,
- *                   impostos, lucroLiquido }],
- *     premissas: { aliqDeducoes, aliqImpostos },
- *     projetos: [],          // sem SCP
- *     scpsDisponiveis: [],   // sem SCP
- *     escopo: null,          // sem SCP
+ *     periodo: "01/01/2026 a 31/12/2026 — D9Pro",
+ *     resumo: { faturamento, qtdPedidos, ticketMedio, frete },
+ *     porMes:    [{ chave:"2026-04", mes:"Abr/26", valor, qtd }],
+ *     porStatus: [{ oSId, label, qtd, valor }],
+ *     porGrupo:  [{ grupo, qtd, valor }],
+ *     pedidos:   [{ orderId, data, cliente, cidade, uf, status, grupo, total, rastreio }],
+ *     totalPedidos, pedidosTruncados,
  *   }
  *
- * ListaTitulos = { itens:[{ tipo, titulo, parceiro, categoria, vencimento,
- *                           valor, pago, aberto, status }],
- *                  truncada, total, qtdAbertas, qtdPagas, totalAberto, totalPago }
+ * Produtos vêm de um endpoint separado (GET /api/produtos):
+ *   { itens: [{ pId, nome, imagem, preco, custo, margem }] }
  */
 
-/** Completa um DRE a partir das linhas-base, calculando os derivados. */
-export function montarDRE({
-  receitaBruta = 0,
-  deducoes = 0,
-  cmv = 0,
-  despesasOper = 0,
-  depreciacao = 0,
-  resultadoFinanceiro = 0,
-  aliqImpostos = 0.34,
-}) {
-  const receitaLiquida = receitaBruta - deducoes;
-  const lucroBruto = receitaLiquida - cmv;
-  const ebitda = lucroBruto - despesasOper;
-  const ebit = ebitda - depreciacao;
-  const lair = ebit + resultadoFinanceiro;
-  const impostos = Math.max(0, lair * aliqImpostos);
-  const lucroLiquido = lair - impostos;
-  return {
-    receitaBruta, deducoes, receitaLiquida, cmv, lucroBruto, despesasOper,
-    ebitda, depreciacao, ebit, resultadoFinanceiro, lair, impostos, lucroLiquido,
-  };
+const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+/** Rótulo "Abr/26" a partir de uma chave "2026-04". */
+export function rotuloMes(chave) {
+  const [ano, mes] = String(chave).split("-");
+  const i = Number(mes) - 1;
+  return `${MESES[i] || mes}/${String(ano).slice(2)}`;
 }
 
 /** Esqueleto vazio do contrato — base segura para um provider preencher. */
@@ -64,42 +35,72 @@ export function contratoVazio(nome = "Healthycann") {
   return {
     nome,
     periodo: "",
-    balanco: {
-      caixa: 0, contasReceber: 0, fornecedores: 0, estoques: 0, imobilizado: 0,
-      intangivel: 0, emprestimosCP: 0, obrigacoes: 0, emprestimosLP: 0,
-      patrimonioLiquido: 0,
+    resumo: { faturamento: 0, qtdPedidos: 0, ticketMedio: 0, frete: 0 },
+    porMes: [],
+    porStatus: [],
+    porGrupo: [],
+    pedidos: [],
+    totalPedidos: 0,
+    pedidosTruncados: false,
+  };
+}
+
+/**
+ * Agrega uma lista de pedidos (já normalizados) no contrato de operação.
+ * Cada pedido: { orderId, data:Date, dataBR, cliente, cidade, uf, oSId,
+ *                status, grupo, total:Number, frete:Number, rastreio }.
+ * `statusLabels` = mapa oSId -> label (de /orders/status.php).
+ */
+export function agregarPedidos(pedidos, statusLabels = {}, limite = 800) {
+  const faturamento = pedidos.reduce((s, p) => s + (p.total || 0), 0);
+  const frete = pedidos.reduce((s, p) => s + (p.frete || 0), 0);
+  const qtdPedidos = pedidos.length;
+
+  const mapMes = new Map();
+  const mapStatus = new Map();
+  const mapGrupo = new Map();
+  for (const p of pedidos) {
+    acumular(mapMes, p.chaveMes, p.total);
+    acumular(mapStatus, p.oSId, p.total);
+    acumular(mapGrupo, p.grupo || "—", p.total);
+  }
+
+  const porMes = [...mapMes.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([chave, v]) => ({ chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd }));
+
+  const porStatus = [...mapStatus.entries()]
+    .map(([oSId, v]) => ({ oSId, label: statusLabels[oSId] || `Status ${oSId}`, qtd: v.qtd, valor: v.valor }))
+    .sort((a, b) => b.valor - a.valor);
+
+  const porGrupo = [...mapGrupo.entries()]
+    .map(([grupo, v]) => ({ grupo, qtd: v.qtd, valor: v.valor }))
+    .sort((a, b) => b.valor - a.valor);
+
+  const ordenados = [...pedidos].sort((a, b) => (b.chaveOrd || "").localeCompare(a.chaveOrd || ""));
+  const lista = ordenados.slice(0, limite).map((p) => ({
+    orderId: p.orderId, data: p.dataBR, cliente: p.cliente, cidade: p.cidade,
+    uf: p.uf, status: statusLabels[p.oSId] || p.status || `Status ${p.oSId}`,
+    grupo: p.grupo, total: p.total, rastreio: p.rastreio,
+  }));
+
+  return {
+    resumo: {
+      faturamento,
+      qtdPedidos,
+      ticketMedio: qtdPedidos ? faturamento / qtdPedidos : 0,
+      frete,
     },
-    dre: montarDRE({}),
-    serieMensal: [],
-    contas: { receber: listaVazia(), pagar: listaVazia() },
-    porCategoria: [],
-    categoriasMensal: [],
-    dreMensal: [],
-    premissas: { aliqDeducoes: 0.15, aliqImpostos: 0.34 },
-    projetos: [],          // Healthycann não tem SCP
-    scpsDisponiveis: [],   // idem
-    escopo: null,          // idem
+    porMes, porStatus, porGrupo,
+    pedidos: lista,
+    totalPedidos: qtdPedidos,
+    pedidosTruncados: qtdPedidos > limite,
   };
 }
 
-export function listaVazia() {
-  return {
-    itens: [], truncada: false, total: 0, qtdAbertas: 0, qtdPagas: 0,
-    totalAberto: 0, totalPago: 0,
-  };
-}
-
-/** Resume uma lista de títulos nos totais que o painel mostra. */
-export function resumirLista(itens) {
-  const abertas = itens.filter((t) => (t.aberto || 0) > 0);
-  const pagas = itens.filter((t) => (t.aberto || 0) <= 0);
-  return {
-    itens,
-    truncada: false,
-    total: itens.length,
-    qtdAbertas: abertas.length,
-    qtdPagas: pagas.length,
-    totalAberto: abertas.reduce((s, t) => s + (t.aberto || 0), 0),
-    totalPago: pagas.reduce((s, t) => s + (t.pago || 0), 0),
-  };
+function acumular(mapa, chave, valor) {
+  const atual = mapa.get(chave) || { valor: 0, qtd: 0 };
+  atual.valor += valor || 0;
+  atual.qtd += 1;
+  mapa.set(chave, atual);
 }
