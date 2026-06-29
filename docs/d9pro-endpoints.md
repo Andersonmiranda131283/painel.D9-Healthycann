@@ -14,6 +14,30 @@ Todas as respostas seguem o envelope `{ t: <epoch>, success: bool, data: ... }`.
 - `GET /config/company.php` — dados da empresa (companyName, companyImage).
 - `GET /config/logistic.php` — caixas (dimensões) e métodos de frete.
 
+## Status dos pedidos (instância Healthycann, confirmado em 28/06/2026)
+
+`/orders/status.php` traz `oSId`, `label`, `statusOrder`, `type` e `ordersHere`
+(quantos pedidos estão no status agora). O conector classifica sozinho por
+`type`/`statusOrder`:
+
+| oSId | label | type | ordem | classificação |
+| --- | --- | --- | --- | --- |
+| 1 | Analisando receita | common | 1 | a receber |
+| 2 | Gerando Pagamento | common | 2 | a receber |
+| 3 | Aguardando Pagamento | common | 3 | a receber |
+| 15 | Aguardando Documentação | common | 4 | recebido (pago) |
+| 14 | Verificando Documentação | common | 5 | recebido (pago) |
+| 5 | Gerando Etiqueta | genCorreio | 6 | recebido (pago) |
+| 8 | Pedido em Separação | common | 7 | recebido (pago) |
+| 10 | Aguardando envio | common | 8 | recebido (pago) |
+| 11 | **Enviado** | **sent** | 9 | recebido + **em trânsito** |
+| 12 | **Entregue** | **delivered** | 10 | recebido (pago) |
+| 13 | **Cancelado** | **deleted** | 99 | **excluído do faturamento** |
+
+Regra: pago = `type` sent/delivered ou etapa após o pagamento (statusOrder > 3);
+em trânsito = `type` sent; cancelado (`type` deleted) sai do faturamento.
+Sobrescrevível por `D9_STATUS_RECEBIDOS` / `D9_STATUS_TRANSITO` / `D9_STATUS_EXCLUIR`.
+
 ## orders (pedidos) — **núcleo financeiro disponível**
 - `GET /orders/list.php?oSId=&date=&filters=` — lista de pedidos.
   Campos: `orderId, oSId (status), orderTotal, orderGroup, trackingCode,

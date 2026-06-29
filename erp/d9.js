@@ -29,6 +29,42 @@ const STATUS_TRANSITO = new Set(
 );
 // Qual relatório CSV conta como "Clientes" na aba Resumo (patients|associates|patientsWithClient).
 const EXPORT_CLIENTES = (process.env.D9_EXPORT_CLIENTES || "patients").trim();
+// (opcional) IDs de status a EXCLUIR do faturamento (cancelados). Sem isto, usa type "deleted".
+const STATUS_EXCLUIR = new Set(
+  (process.env.D9_STATUS_EXCLUIR || "").split(",").map((s) => s.trim()).filter(Boolean)
+);
+
+/**
+ * Classifica os status do pedido a partir de /orders/status.php, usando os
+ * campos `type` (sent/delivered/deleted) e `statusOrder`:
+ *   - excluidos = cancelados (type "deleted") → fora do faturamento;
+ *   - transito  = type "sent" (Enviado);
+ *   - recebidos = pago/entregue = type sent|delivered OU etapa após o pagamento
+ *                 (statusOrder maior que o do último status de "pagamento").
+ * Variáveis D9_STATUS_* sobrescrevem cada conjunto, se definidas.
+ */
+function classificarStatus(statusData = []) {
+  const meta = {};
+  let pagamentoOrdem = 0;
+  for (const s of statusData) {
+    const id = String(s.oSId);
+    const ordem = parseInt(s.statusOrder) || 0;
+    meta[id] = { label: s.label, type: s.type || "", ordem, ordersHere: parseInt(s.ordersHere) || 0 };
+    if (/pagamento/i.test(s.label) && s.type !== "deleted") pagamentoOrdem = Math.max(pagamentoOrdem, ordem);
+  }
+  const excluidos = new Set(), transito = new Set(), recebidos = new Set();
+  for (const [id, m] of Object.entries(meta)) {
+    if (m.type === "deleted") { excluidos.add(id); continue; }
+    if (m.type === "sent") transito.add(id);
+    if (m.type === "sent" || m.type === "delivered" || (pagamentoOrdem && m.ordem > pagamentoOrdem)) recebidos.add(id);
+  }
+  if (STATUS_RECEBIDOS.size) { recebidos.clear(); STATUS_RECEBIDOS.forEach((x) => recebidos.add(x)); }
+  if (STATUS_TRANSITO.size) { transito.clear(); STATUS_TRANSITO.forEach((x) => transito.add(x)); }
+  if (STATUS_EXCLUIR.size) { excluidos.clear(); STATUS_EXCLUIR.forEach((x) => excluidos.add(x)); }
+  const labels = {};
+  for (const [id, m] of Object.entries(meta)) labels[id] = m.label;
+  return { meta, labels, excluidos, transito, recebidos };
+}
 
 export const nome = "d9";
 export const configurado = Boolean(API_URL && API_TOKEN);
@@ -114,11 +150,13 @@ export async function operacao({ inicio, fim } = {}) {
     chamar("/orders/status.php").catch(() => ({ data: [] })),
   ]);
 
-  const statusLabels = {};
-  for (const s of statusResp.data || []) statusLabels[String(s.oSId)] = s.label;
+  const cls = classificarStatus(statusResp.data || []);
 
-  const pedidos = (listaResp.data || []).map(normalizarPedido);
-  const agregado = agregarPedidos(pedidos, statusLabels, { recebidosIds: STATUS_RECEBIDOS });
+  // Pedidos do período, excluindo cancelados (faturamento = pedidos válidos).
+  const pedidos = (listaResp.data || [])
+    .map(normalizarPedido)
+    .filter((p) => !cls.excluidos.has(p.oSId));
+  const agregado = agregarPedidos(pedidos, cls.labels, { recebidosIds: cls.recebidos });
 
   return {
     ...contratoVazio("Healthycann"),
@@ -194,13 +232,6 @@ export async function comissoes({ inicio, fim } = {}) {
   };
 }
 
-/** Um pedido está "em trânsito" pelos IDs configurados ou pela heurística do rótulo. */
-function ehTransito(oSId, label) {
-  if (STATUS_TRANSITO.size) return STATUS_TRANSITO.has(String(oSId));
-  const n = String(label || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  return /(transit|enviad|despach|transporte|correio|a caminho|saiu para entrega|rastre)/.test(n);
-}
-
 /**
  * Resumo (estilo "Home" da D9Pro): KPIs de cadastros + pedidos + últimos.
  * Pedidos vêm de /orders/list.php (confiável). Clientes e Prescritores são a
@@ -213,15 +244,20 @@ export async function resumo({ inicio, fim } = {}) {
     chamar("/orders/list.php", { oSId: 0, date: rangeData(inicio, fim), filters: "{}" }),
     chamar("/orders/status.php").catch(() => ({ data: [] })),
   ]);
-  const statusLabels = {};
-  for (const s of statusResp.data || []) statusLabels[String(s.oSId)] = s.label;
+  const cls = classificarStatus(statusResp.data || []);
 
-  const pedidos = (listaResp.data || []).map(normalizarPedido);
-  const emTransito = pedidos.filter((p) => ehTransito(p.oSId, statusLabels[p.oSId])).length;
+  // "Em trânsito" = snapshot ao vivo (ordersHere dos status de envio) — igual à Home.
+  let emTransito = 0;
+  for (const id of cls.transito) emTransito += cls.meta[id]?.ordersHere || 0;
+
+  // Pedidos válidos do período (exclui cancelados).
+  const pedidos = (listaResp.data || [])
+    .map(normalizarPedido)
+    .filter((p) => !cls.excluidos.has(p.oSId));
   const ultimosPedidos = [...pedidos]
     .sort((a, b) => (b.chaveOrd || "").localeCompare(a.chaveOrd || ""))
     .slice(0, 8)
-    .map((p) => ({ orderId: p.orderId, cliente: p.cliente, cidade: p.cidade, uf: p.uf, data: p.dataBR, status: statusLabels[p.oSId] || p.status }));
+    .map((p) => ({ orderId: p.orderId, cliente: p.cliente, cidade: p.cidade, uf: p.uf, data: p.dataBR, status: cls.labels[p.oSId] || p.status }));
 
   const avisos = [];
   let clientes = null, prescritores = null, ultimosClientes = [];
