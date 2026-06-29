@@ -13,6 +13,26 @@ const API_OPERACAO =
   (typeof window !== "undefined" && window.PAINEL_API_URL) || "/api/operacao";
 const API_PRODUTOS = "/api/produtos";
 const API_COMISSOES = "/api/comissoes";
+const API_RESUMO = "/api/resumo";
+
+const resumoExemplo = {
+  nome: "Healthycann",
+  periodo: "Últimos 30 dias — dados de exemplo",
+  kpis: { clientes: 2566, prescritores: 1091, pedidosPeriodo: 315, emTransito: 222 },
+  ultimosPedidos: [
+    { orderId: "5493", cliente: "Maria Eduarda Couto", cidade: "Itajaí", uf: "SC", data: "26/06/2026", status: "Pago" },
+    { orderId: "5492", cliente: "Julia Kovacs", cidade: "São José", uf: "SC", data: "26/06/2026", status: "Entregue" },
+    { orderId: "5491", cliente: "Patricia Costa de Oliveira", cidade: "Campo Grande", uf: "MS", data: "26/06/2026", status: "Analisando receita" },
+    { orderId: "5490", cliente: "João Mauricio Leite", cidade: "Patos", uf: "PB", data: "26/06/2026", status: "Em trânsito" },
+  ],
+  ultimosClientes: [
+    { id: "3828", nome: "João Mauricio Leite Torres", cidade: "Patos", uf: "PB" },
+    { id: "3827", nome: "Patricia Costa de Oliveira Campos", cidade: "Campo Grande", uf: "MS" },
+    { id: "3826", nome: "Julia Kovacs", cidade: "São José", uf: "SC" },
+    { id: "3825", nome: "Larissa Librelato", cidade: "Itajaí", uf: "SC" },
+  ],
+  avisos: [],
+};
 
 const operacaoExemplo = {
   nome: "Healthycann",
@@ -223,9 +243,10 @@ function ultimos12() {
    APP
    ============================================================ */
 export default function PainelFaturamento() {
-  const [aba, setAba] = useState("visao");
+  const [aba, setAba] = useState("resumo");
   const [periodo, setPeriodo] = useState(() => anoAtual());
   const [dados, setDados] = useState(operacaoExemplo);
+  const [resumo, setResumo] = useState(resumoExemplo);
   const [produtos, setProdutos] = useState(produtosExemplo);
   const [comissoes, setComissoes] = useState(comissoesExemplo);
   const [carregando, setCarregando] = useState(true);
@@ -264,6 +285,14 @@ export default function PainelFaturamento() {
       .catch(() => {});
   }, [periodo.inicio, periodo.fim]);
 
+  useEffect(() => {
+    const url = `${API_RESUMO}?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.kpis) setResumo(d); })
+      .catch(() => {});
+  }, [periodo.inicio, periodo.fim]);
+
   const r = dados.resumo || {};
   const pedidosFiltrados = useMemo(() => {
     const lista = dados.pedidos || [];
@@ -288,10 +317,60 @@ export default function PainelFaturamento() {
 
       <div className="fin-wrap">
         <div className="tabs">
-          {[["visao", "Visão geral"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
+          {[["resumo", "Resumo"], ["visao", "Visão geral"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
             <button key={id} className={"tab" + (aba === id ? " on" : "")} onClick={() => setAba(id)}>{nome}</button>
           ))}
         </div>
+
+        {/* ---------- RESUMO (estilo Home D9Pro) ---------- */}
+        {aba === "resumo" && (
+          <>
+            <div className="kpis">
+              <Kpi label="Clientes" valor={resumo.kpis.clientes != null ? int(resumo.kpis.clientes) : "—"} sub="Cadastros na base" />
+              <Kpi label="Prescritores" valor={resumo.kpis.prescritores != null ? int(resumo.kpis.prescritores) : "—"} sub="Cadastros na base" />
+              <Kpi label="Pedidos no período" valor={int(resumo.kpis.pedidosPeriodo)} sub="Conforme o período selecionado" />
+              <Kpi label="Em trânsito" valor={int(resumo.kpis.emTransito)} sub="Pedidos a caminho (estimado)" />
+            </div>
+
+            {(resumo.avisos || []).map((a, i) => (
+              <p key={i} className="note" style={{ color: C.gold }}>⚠ {a}</p>
+            ))}
+
+            <div className="grid2">
+              <div className="panel">
+                <div className="section-h">Últimos pedidos</div>
+                <table>
+                  <thead><tr><th>Pedido</th><th>Cliente</th><th>Cidade/UF</th><th>Status</th><th>Data</th></tr></thead>
+                  <tbody>
+                    {(resumo.ultimosPedidos || []).map((p) => (
+                      <tr key={p.orderId}>
+                        <td>#{p.orderId}</td><td>{p.cliente}</td>
+                        <td>{p.cidade}{p.uf ? `/${p.uf}` : ""}</td>
+                        <td><span className="tag">{p.status}</span></td><td>{p.data}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!(resumo.ultimosPedidos || []).length && <p className="note">Sem pedidos no período.</p>}
+              </div>
+              <div className="panel">
+                <div className="section-h">Últimos clientes</div>
+                <table>
+                  <thead><tr><th>#</th><th>Cliente</th><th>Cidade/UF</th></tr></thead>
+                  <tbody>
+                    {(resumo.ultimosClientes || []).map((c, i) => (
+                      <tr key={c.id || i}>
+                        <td>{c.id ? `#${c.id}` : "—"}</td><td>{c.nome}</td>
+                        <td>{c.cidade}{c.uf ? `/${c.uf}` : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!(resumo.ultimosClientes || []).length && <p className="note">Lista de clientes recentes indisponível (depende do relatório de cadastros).</p>}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ---------- VISÃO GERAL ---------- */}
         {aba === "visao" && (

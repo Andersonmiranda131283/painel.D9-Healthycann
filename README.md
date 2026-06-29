@@ -41,6 +41,8 @@ ERP_PROVIDER=mock npm start
 
 ## Abas do painel
 
+- **Resumo** — réplica da "Home" da D9Pro: Clientes, Prescritores, Pedidos no
+  período, Em trânsito; últimos pedidos e últimos clientes.
 - **Visão geral** — faturamento, **recebido × a receber**, nº de pedidos,
   ticket médio; faturamento por mês (gráfico); por status (recebido/a receber)
   e por grupo.

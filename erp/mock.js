@@ -74,6 +74,27 @@ export async function produtos() {
   };
 }
 
+export async function resumo({ inicio, fim } = {}) {
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || "01/01/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
+    kpis: { clientes: 2566, prescritores: 1091, pedidosPeriodo: 315, emTransito: 222 },
+    ultimosPedidos: [
+      { orderId: "5493", cliente: "Maria Eduarda Couto", cidade: "Itajaí", uf: "SC", data: "26/06/2026", status: "Pago" },
+      { orderId: "5492", cliente: "Julia Kovacs", cidade: "São José", uf: "SC", data: "26/06/2026", status: "Entregue" },
+      { orderId: "5491", cliente: "Patricia Costa de Oliveira", cidade: "Campo Grande", uf: "MS", data: "26/06/2026", status: "Analisando receita" },
+      { orderId: "5490", cliente: "João Mauricio Leite", cidade: "Patos", uf: "PB", data: "26/06/2026", status: "Em trânsito" },
+    ],
+    ultimosClientes: [
+      { id: "3828", nome: "João Mauricio Leite Torres", cidade: "Patos", uf: "PB" },
+      { id: "3827", nome: "Patricia Costa de Oliveira Campos", cidade: "Campo Grande", uf: "MS" },
+      { id: "3826", nome: "Julia Kovacs", cidade: "São José", uf: "SC" },
+      { id: "3825", nome: "Larissa Librelato", cidade: "Itajaí", uf: "SC" },
+    ],
+    avisos: [],
+  };
+}
+
 export async function comissoes({ inicio, fim } = {}) {
   const porOperador = [
     { nome: "Bruno L.", valor: 8200 },

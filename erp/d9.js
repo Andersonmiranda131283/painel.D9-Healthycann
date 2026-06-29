@@ -23,6 +23,12 @@ const API_TOKEN = process.env.D9_API_TOKEN || "";
 const STATUS_RECEBIDOS = new Set(
   (process.env.D9_STATUS_RECEBIDOS || "").split(",").map((s) => s.trim()).filter(Boolean)
 );
+// (opcional) IDs de status de "em trânsito"; sem isto, deduz pelo rótulo.
+const STATUS_TRANSITO = new Set(
+  (process.env.D9_STATUS_TRANSITO || "").split(",").map((s) => s.trim()).filter(Boolean)
+);
+// Qual relatório CSV conta como "Clientes" na aba Resumo (patients|associates|patientsWithClient).
+const EXPORT_CLIENTES = (process.env.D9_EXPORT_CLIENTES || "patients").trim();
 
 export const nome = "d9";
 export const configurado = Boolean(API_URL && API_TOKEN);
@@ -51,6 +57,18 @@ async function chamarTexto(caminho, params = {}) {
   const resp = await fetch(montarUrl(caminho, params), { headers: { token: API_TOKEN } });
   if (!resp.ok) throw new Error(`D9Pro API HTTP ${resp.status} em ${caminho}`);
   return resp.text();
+}
+
+// Cache simples (TTL) para os CSVs — evita rebaixar relatórios grandes a cada período.
+const _cacheCSV = new Map();
+async function csvCacheado(caminho, params = {}, ttlMs = 5 * 60 * 1000) {
+  const chave = caminho + JSON.stringify(params);
+  const hit = _cacheCSV.get(chave);
+  const agora = Date.now();
+  if (hit && agora - hit.ts < ttlMs) return hit.txt;
+  const txt = await chamarTexto(caminho, params);
+  _cacheCSV.set(chave, { ts: agora, txt });
+  return txt;
 }
 
 /** Testa a conexão/autenticação batendo no endpoint do usuário atual. */
@@ -173,5 +191,69 @@ export async function comissoes({ inicio, fim } = {}) {
     colValor, colOper,
     itens: linhas.slice(0, 500),
     aviso: colValor ? null : "Não identifiquei a coluna de valor da comissão no CSV — confira docs/d9pro-endpoints.md.",
+  };
+}
+
+/** Um pedido está "em trânsito" pelos IDs configurados ou pela heurística do rótulo. */
+function ehTransito(oSId, label) {
+  if (STATUS_TRANSITO.size) return STATUS_TRANSITO.has(String(oSId));
+  const n = String(label || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return /(transit|enviad|despach|transporte|correio|a caminho|saiu para entrega|rastre)/.test(n);
+}
+
+/**
+ * Resumo (estilo "Home" da D9Pro): KPIs de cadastros + pedidos + últimos.
+ * Pedidos vêm de /orders/list.php (confiável). Clientes e Prescritores são a
+ * contagem de linhas dos CSVs de cadastro (configurável via D9_EXPORT_CLIENTES).
+ */
+export async function resumo({ inicio, fim } = {}) {
+  if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
+
+  const [listaResp, statusResp] = await Promise.all([
+    chamar("/orders/list.php", { oSId: 0, date: rangeData(inicio, fim), filters: "{}" }),
+    chamar("/orders/status.php").catch(() => ({ data: [] })),
+  ]);
+  const statusLabels = {};
+  for (const s of statusResp.data || []) statusLabels[String(s.oSId)] = s.label;
+
+  const pedidos = (listaResp.data || []).map(normalizarPedido);
+  const emTransito = pedidos.filter((p) => ehTransito(p.oSId, statusLabels[p.oSId])).length;
+  const ultimosPedidos = [...pedidos]
+    .sort((a, b) => (b.chaveOrd || "").localeCompare(a.chaveOrd || ""))
+    .slice(0, 8)
+    .map((p) => ({ orderId: p.orderId, cliente: p.cliente, cidade: p.cidade, uf: p.uf, data: p.dataBR, status: statusLabels[p.oSId] || p.status }));
+
+  const avisos = [];
+  let clientes = null, prescritores = null, ultimosClientes = [];
+
+  try {
+    const { colunas, linhas } = parseCSV(await csvCacheado(`/export/${EXPORT_CLIENTES}.php`));
+    clientes = linhas.length;
+    const colNome = acharColuna(colunas, ["nome", "name", "paciente", "cliente", "associado", "razao"]);
+    const colId = acharColuna(colunas, ["^id$", "codigo", "código", "id$"]);
+    const colCidade = acharColuna(colunas, ["cidade", "city", "municip"]);
+    const colUf = acharColuna(colunas, ["^uf$", "estado", "state"]);
+    if (colNome) {
+      const ord = colId ? [...linhas].sort((a, b) => (parseInt(b[colId]) || 0) - (parseInt(a[colId]) || 0)) : linhas;
+      ultimosClientes = ord.slice(0, 8).map((l) => ({
+        id: colId ? l[colId] : "", nome: l[colNome],
+        cidade: colCidade ? l[colCidade] : "", uf: colUf ? l[colUf] : "",
+      }));
+    }
+  } catch {
+    avisos.push(`Não consegui ler /export/${EXPORT_CLIENTES}.php para "Clientes" (ajuste D9_EXPORT_CLIENTES).`);
+  }
+
+  try {
+    prescritores = parseCSV(await csvCacheado("/export/prescribers.php")).linhas.length;
+  } catch {
+    avisos.push("Não consegui ler /export/prescribers.php para \"Prescritores\".");
+  }
+
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || ""} a ${fim || ""} — D9Pro`,
+    kpis: { clientes, prescritores, pedidosPeriodo: pedidos.length, emTransito },
+    ultimosPedidos, ultimosClientes, avisos,
   };
 }

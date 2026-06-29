@@ -64,6 +64,20 @@ function periodoDaQuery(req) {
   };
 }
 
+app.get("/api/resumo", async (req, res) => {
+  if (!provider.configurado) {
+    return res.status(503).json({ erro: "ERP não configurado" });
+  }
+  try {
+    const { inicio, fim } = periodoDaQuery(req);
+    const dados = await provider.resumo({ inicio, fim });
+    res.json({ ...dados, protegido: AUTH_ATIVA });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ erro: `Falha ao montar o resumo (${provider.nome})`, detalhe: String(err.message) });
+  }
+});
+
 app.get("/api/operacao", async (req, res) => {
   if (!provider.configurado) {
     return res.status(503).json({
