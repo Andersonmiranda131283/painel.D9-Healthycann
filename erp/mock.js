@@ -66,10 +66,29 @@ export async function operacao({ inicio, fim } = {}) {
 export async function produtos() {
   return {
     itens: [
-      { pId: "1", nome: "Óleo Full Spectrum 30 mL", imagem: "", preco: 300, custo: 120, margem: 0.6 },
-      { pId: "2", nome: "Óleo Isolado 30 mL", imagem: "", preco: 250, custo: 100, margem: 0.6 },
-      { pId: "3", nome: "Cápsulas 60 un", imagem: "", preco: 200, custo: 90, margem: 0.55 },
-      { pId: "6", nome: "Anuidade", imagem: "", preco: 150, custo: 0, margem: 1 },
+      { pId: "1", nome: "Óleo Full Spectrum 30 mL", imagem: "", preco: 300, custo: 120, margem: 0.6, regras: 2 },
+      { pId: "2", nome: "Óleo Isolado 30 mL", imagem: "", preco: 250, custo: 100, margem: 0.6, regras: 2 },
+      { pId: "3", nome: "Cápsulas 60 un", imagem: "", preco: 200, custo: 90, margem: 0.55, regras: 1 },
+      { pId: "6", nome: "Anuidade", imagem: "", preco: 150, custo: 0, margem: 1, regras: 1 },
     ],
+  };
+}
+
+export async function comissoes({ inicio, fim } = {}) {
+  const porOperador = [
+    { nome: "Bruno L.", valor: 8200 },
+    { nome: "Aline F.", valor: 6450 },
+    { nome: "Rafael C.", valor: 5100 },
+    { nome: "Carla T.", valor: 3980 },
+  ];
+  const total = porOperador.reduce((s, o) => s + o.valor, 0);
+  const itens = porOperador.map((o, i) => ({
+    Operador: o.nome, Pedidos: String(12 - i * 2), Comissão: o.valor.toFixed(2).replace(".", ","),
+  }));
+  return {
+    total, qtd: itens.length, porOperador,
+    colunas: ["Operador", "Pedidos", "Comissão"],
+    colValor: "Comissão", colOper: "Operador",
+    itens, aviso: null,
   };
 }

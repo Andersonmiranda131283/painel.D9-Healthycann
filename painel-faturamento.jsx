@@ -12,11 +12,12 @@ import {
 const API_OPERACAO =
   (typeof window !== "undefined" && window.PAINEL_API_URL) || "/api/operacao";
 const API_PRODUTOS = "/api/produtos";
+const API_COMISSOES = "/api/comissoes";
 
 const operacaoExemplo = {
   nome: "Healthycann",
   periodo: "Exercício 2026 — dados de exemplo",
-  resumo: { faturamento: 642300, qtdPedidos: 98, ticketMedio: 6554, frete: 0 },
+  resumo: { faturamento: 642300, qtdPedidos: 98, ticketMedio: 6554, frete: 0, recebido: 478000, aReceber: 164300 },
   porMes: [
     { chave: "2026-01", mes: "Jan/26", valor: 92000, qtd: 15 },
     { chave: "2026-02", mes: "Fev/26", valor: 104500, qtd: 16 },
@@ -26,10 +27,10 @@ const operacaoExemplo = {
     { chave: "2026-06", mes: "Jun/26", valor: 116000, qtd: 17 },
   ],
   porStatus: [
-    { oSId: "16", label: "Entregue", qtd: 41, valor: 286000 },
-    { oSId: "8", label: "Pago", qtd: 28, valor: 192000 },
-    { oSId: "14", label: "Verificando Documentação", qtd: 17, valor: 102300 },
-    { oSId: "1", label: "Analisando receita", qtd: 12, valor: 62000 },
+    { oSId: "16", label: "Entregue", qtd: 41, valor: 286000, recebido: true },
+    { oSId: "8", label: "Pago", qtd: 28, valor: 192000, recebido: true },
+    { oSId: "14", label: "Verificando Documentação", qtd: 17, valor: 102300, recebido: false },
+    { oSId: "1", label: "Analisando receita", qtd: 12, valor: 62000, recebido: false },
   ],
   porGrupo: [
     { grupo: "Comum", qtd: 64, valor: 430000 },
@@ -49,11 +50,31 @@ const operacaoExemplo = {
 
 const produtosExemplo = {
   itens: [
-    { pId: "1", nome: "Óleo Full Spectrum 30 mL", preco: 300, custo: 120, margem: 0.6 },
-    { pId: "2", nome: "Óleo Isolado 30 mL", preco: 250, custo: 100, margem: 0.6 },
-    { pId: "3", nome: "Cápsulas 60 un", preco: 200, custo: 90, margem: 0.55 },
-    { pId: "6", nome: "Anuidade", preco: 150, custo: 0, margem: 1 },
+    { pId: "1", nome: "Óleo Full Spectrum 30 mL", preco: 300, custo: 120, margem: 0.6, regras: 2 },
+    { pId: "2", nome: "Óleo Isolado 30 mL", preco: 250, custo: 100, margem: 0.6, regras: 2 },
+    { pId: "3", nome: "Cápsulas 60 un", preco: 200, custo: 90, margem: 0.55, regras: 1 },
+    { pId: "6", nome: "Anuidade", preco: 150, custo: 0, margem: 1, regras: 1 },
   ],
+};
+
+const comissoesExemplo = {
+  total: 23730,
+  qtd: 4,
+  porOperador: [
+    { nome: "Bruno L.", valor: 8200 },
+    { nome: "Aline F.", valor: 6450 },
+    { nome: "Rafael C.", valor: 5100 },
+    { nome: "Carla T.", valor: 3980 },
+  ],
+  colunas: ["Operador", "Pedidos", "Comissão"],
+  colValor: "Comissão", colOper: "Operador",
+  itens: [
+    { Operador: "Bruno L.", Pedidos: "12", Comissão: "8200,00" },
+    { Operador: "Aline F.", Pedidos: "10", Comissão: "6450,00" },
+    { Operador: "Rafael C.", Pedidos: "8", Comissão: "5100,00" },
+    { Operador: "Carla T.", Pedidos: "6", Comissão: "3980,00" },
+  ],
+  aviso: null,
 };
 
 /* ============================================================
@@ -70,6 +91,7 @@ const brl = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", c
 const brlK = (v) => "R$ " + Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const int = (v) => Number(v || 0).toLocaleString("pt-BR");
 const pct = (v) => (Number(v || 0) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + "%";
+const pctDe = (a, b) => (b ? Math.round((Number(a) / Number(b)) * 100) : 0) + "%";
 const fmtBR = (d) => d.toLocaleDateString("pt-BR");
 const numBR = (n) => Number(n || 0).toFixed(2).replace(".", ",");
 
@@ -161,7 +183,7 @@ function BarrasHorizontais({ dados, max }) {
             <span>{d.label} <span style={{ color: C.mute }}>· {int(d.qtd)} ped.</span></span>
             <b>{brl(d.valor)}</b>
           </div>
-          <div className="bar-track"><div className="bar-fill" style={{ width: (d.valor / m) * 100 + "%", background: PALETA[i % PALETA.length] }} /></div>
+          <div className="bar-track"><div className="bar-fill" style={{ width: (d.valor / m) * 100 + "%", background: d.cor || PALETA[i % PALETA.length] }} /></div>
         </div>
       ))}
     </div>
@@ -205,6 +227,7 @@ export default function PainelFaturamento() {
   const [periodo, setPeriodo] = useState(() => anoAtual());
   const [dados, setDados] = useState(operacaoExemplo);
   const [produtos, setProdutos] = useState(produtosExemplo);
+  const [comissoes, setComissoes] = useState(comissoesExemplo);
   const [carregando, setCarregando] = useState(true);
   const [erroApi, setErroApi] = useState(null);
   const [atualizadoEm, setAtualizadoEm] = useState(null);
@@ -233,6 +256,14 @@ export default function PainelFaturamento() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const url = `${API_COMISSOES}?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.porOperador) setComissoes(d); })
+      .catch(() => {});
+  }, [periodo.inicio, periodo.fim]);
+
   const r = dados.resumo || {};
   const pedidosFiltrados = useMemo(() => {
     const lista = dados.pedidos || [];
@@ -257,7 +288,7 @@ export default function PainelFaturamento() {
 
       <div className="fin-wrap">
         <div className="tabs">
-          {[["visao", "Visão geral"], ["pedidos", "Pedidos"], ["produtos", "Produtos"]].map(([id, nome]) => (
+          {[["visao", "Visão geral"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
             <button key={id} className={"tab" + (aba === id ? " on" : "")} onClick={() => setAba(id)}>{nome}</button>
           ))}
         </div>
@@ -267,9 +298,10 @@ export default function PainelFaturamento() {
           <>
             <div className="kpis">
               <Kpi label="Faturamento" valor={brlK(r.faturamento)} sub="Soma dos pedidos no período" />
+              <Kpi label="Recebido" valor={brlK(r.recebido)} sub={`${pctDe(r.recebido, r.faturamento)} do faturamento`} />
+              <Kpi label="A receber" valor={brlK(r.aReceber)} sub="Pedidos ainda não pagos/entregues" />
               <Kpi label="Pedidos" valor={int(r.qtdPedidos)} sub="Quantidade no período" />
               <Kpi label="Ticket médio" valor={brlK(r.ticketMedio)} sub="Faturamento ÷ pedidos" />
-              <Kpi label="Status distintos" valor={int((dados.porStatus || []).length)} sub="Etapas com pedidos" />
             </div>
 
             <div className="panel" style={{ marginTop: 18 }}>
@@ -289,7 +321,8 @@ export default function PainelFaturamento() {
             <div className="grid2">
               <div className="panel">
                 <div className="section-h">Faturamento por status</div>
-                <BarrasHorizontais dados={(dados.porStatus || []).map((s) => ({ label: s.label, valor: s.valor, qtd: s.qtd }))} />
+                <BarrasHorizontais dados={(dados.porStatus || []).map((s) => ({ label: s.label, valor: s.valor, qtd: s.qtd, cor: s.recebido ? C.emerald : C.gold }))} />
+                <p className="note"><span style={{ color: C.emerald }}>■</span> recebido (pago/entregue) · <span style={{ color: C.gold }}>■</span> a receber</p>
               </div>
               <div className="panel">
                 <div className="section-h">Por grupo de pedido</div>
@@ -366,8 +399,49 @@ export default function PainelFaturamento() {
                 ))}
               </tbody>
             </table>
-            <p className="note">Preço e custo vêm das regras de preço da D9Pro (uma chamada por produto) — habilitados na próxima iteração do conector.</p>
+            <p className="note">Preço e custo vêm das regras de preço da D9Pro (“a partir de”, menor preço entre as regras). Produtos com várias regras mostram o valor de entrada.</p>
           </div>
+        )}
+
+        {/* ---------- COMISSÕES ---------- */}
+        {aba === "comissoes" && (
+          <>
+            <div className="kpis">
+              <Kpi label="Comissões no período" valor={brlK(comissoes.total)} sub={`${int(comissoes.qtd)} linha(s) no relatório`} />
+              <Kpi label="Operadores" valor={int((comissoes.porOperador || []).length)} sub="Com comissão no período" />
+            </div>
+
+            {comissoes.aviso && <p className="note" style={{ color: C.brick }}>⚠ {comissoes.aviso}</p>}
+
+            <div className="grid2">
+              <div className="panel">
+                <div className="section-h">Comissão por operador</div>
+                <BarrasHorizontais dados={(comissoes.porOperador || []).map((o) => ({ label: o.nome, valor: o.valor, qtd: 0 }))} />
+              </div>
+              <div className="panel">
+                <div className="section-h">Relatório (CSV da D9Pro)</div>
+                <div className="toolbar">
+                  <button style={{ marginLeft: "auto" }} onClick={() => baixarCSV("comissoes.csv",
+                    comissoes.colunas || [],
+                    (comissoes.itens || []).map((it) => (comissoes.colunas || []).map((c) => it[c])))}>
+                    ↓ CSV
+                  </button>
+                </div>
+                <div style={{ maxHeight: 320, overflow: "auto" }}>
+                  <table>
+                    <thead><tr>{(comissoes.colunas || []).map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                    <tbody>
+                      {(comissoes.itens || []).map((it, i) => (
+                        <tr key={i}>{(comissoes.colunas || []).map((c) => <td key={c}>{it[c]}</td>)}</tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!(comissoes.itens || []).length && <p className="note">Sem linhas de comissão no período.</p>}
+              </div>
+            </div>
+            <p className="note">As colunas vêm direto do relatório <span style={{ fontFamily: "monospace" }}>/export/commission.php</span>. O total soma a coluna <b>{comissoes.colValor || "—"}</b> e o agrupamento usa <b>{comissoes.colOper || "—"}</b>. Se a detecção estiver errada no CSV real, ajustamos.</p>
+          </>
         )}
       </div>
     </div>

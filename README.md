@@ -41,10 +41,12 @@ ERP_PROVIDER=mock npm start
 
 ## Abas do painel
 
-- **Visão geral** — faturamento total, nº de pedidos, ticket médio; faturamento
-  por mês (gráfico); por status e por grupo de pedido.
+- **Visão geral** — faturamento, **recebido × a receber**, nº de pedidos,
+  ticket médio; faturamento por mês (gráfico); por status (recebido/a receber)
+  e por grupo.
 - **Pedidos** — tabela de pedidos do período, filtro por status e export CSV.
-- **Produtos** — catálogo (preço/custo/margem na próxima iteração do conector).
+- **Produtos** — catálogo com **preço/custo/margem** (regras de preço da D9Pro).
+- **Comissões** — total e por operador, a partir do CSV `/export/commission.php`.
 
 ## Arquitetura
 

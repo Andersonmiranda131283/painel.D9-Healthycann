@@ -95,6 +95,20 @@ app.get("/api/produtos", async (req, res) => {
   }
 });
 
+app.get("/api/comissoes", async (req, res) => {
+  if (!provider.configurado) {
+    return res.status(503).json({ erro: "ERP não configurado" });
+  }
+  try {
+    const { inicio, fim } = periodoDaQuery(req);
+    const dados = await provider.comissoes({ inicio, fim });
+    res.json(dados);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ erro: "Falha ao consultar comissões no ERP", detalhe: String(err.message) });
+  }
+});
+
 // Arquivos estáticos do painel
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 

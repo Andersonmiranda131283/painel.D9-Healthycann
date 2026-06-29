@@ -21,16 +21,23 @@ DRE/Balanço.
 - Catálogo de endpoints em `docs/d9pro-endpoints.md`.
 - Login opcional por senha; `render.yaml` pronto.
 
+## Implementado nesta rodada
+
+- **Recebido × a receber** — KPIs e barras por status coloridas (recebido/–).
+  Classificação por heurística do rótulo, ou pela lista `D9_STATUS_RECEBIDOS`.
+- **Produtos com preço/custo/margem** — cruza cada produto com
+  `/products/getRules.php` (preço "a partir de", menor entre as regras).
+- **Aba Comissões** — lê o CSV de `/export/commission.php` (parser próprio,
+  detecção heurística das colunas valor/operador), com total, por operador,
+  tabela e export.
+
 ## O que falta (próximos passos)
 
 1. **Token da D9Pro** — gerar e pôr no `.env` para ligar os dados reais. Sem
    ele, o painel fica nos dados de exemplo.
-2. **Produtos com preço/custo/margem** — hoje só o catálogo; falta cruzar com
-   `/products/getRules.php` (1 chamada por produto).
-3. **Recebido × a receber** — depende de identificar quais `oSId` (status)
-   contam como "pago/entregue" (ou ler `payTime` via `/orders/get.php`).
-4. **Comissões** — aba a partir de `/export/commission.php` (CSV).
-5. Novas operações/abas que você quiser acrescentar.
+2. **Verificar contra dados reais** — confirmar os `oSId` de "pago/entregue"
+   (setar `D9_STATUS_RECEBIDOS`) e as colunas reais do CSV de comissões.
+3. Novas operações/abas que você quiser acrescentar.
 
 ## Decisões importantes
 
