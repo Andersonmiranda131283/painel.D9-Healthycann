@@ -162,6 +162,12 @@ function dataCSV(createTime) {
   return { chaveDia: `${y}-${mo}-${d}`, chaveMes: `${y}-${mo}`, dataBR: `${d}/${mo}/${y}` };
 }
 
+/** Chave ordenável a partir de "dd/mm/aaaa hh:mm" do CSV. */
+function ordemCSV(ct) {
+  const m = String(ct || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2})?:?(\d{2})?/);
+  return m ? `${m[3]}${m[2]}${m[1]}${m[4] || "00"}${m[5] || "00"}` : "";
+}
+
 function acc(mapa, chave, valor, frascos = 0) {
   const a = mapa.get(chave) || { valor: 0, qtd: 0, frascos: 0 };
   a.valor += valor || 0; a.qtd += 1; a.frascos += frascos || 0; mapa.set(chave, a);
@@ -393,6 +399,45 @@ export async function vendas({ inicio, fim } = {}) {
     porGrupo: lista(porGrupo, "grupo"),
     porCidade: lista(porCidade, "cidade"),
     porVendedor: lista(porVendedor, "nome"),
+  };
+}
+
+/**
+ * Pedidos CANCELADOS do período (a partir do relatório completo). Lista com
+ * data, cliente, valor e produtos. O "motivo" não vem no relatório (fica nas
+ * observações do pedido) — mostra a coluna Alerta quando houver.
+ */
+export async function cancelados({ inicio, fim } = {}) {
+  if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
+
+  const [texto, statusResp] = await Promise.all([
+    csvCacheado("/export/orders.php", rangeExport(inicio, fim)),
+    chamar("/orders/status.php").catch(() => ({ data: [] })),
+  ]);
+  const cls = classificarStatus(statusResp.data || []);
+  const linhas = parseCSV(texto).linhas
+    .filter((l) => cls.excluidos.has(String(l.oSId)) || /cancel/i.test(l.orderStatus || ""));
+
+  const itens = [...linhas]
+    .sort((a, b) => ordemCSV(b.createTime).localeCompare(ordemCSV(a.createTime)))
+    .map((l) => ({
+      orderId: l.orderId,
+      data: (l.createTime || "").slice(0, 16),
+      cliente: String(l.cliente || l.addressPersonName || "").replace(/^\d+\s*-\s*/, ""),
+      cidade: l.addressCity || "", uf: l.addressState || "",
+      valor: numeroBR(l.orderTotal),
+      produtos: parseConteudo(l.conteudo).map((p) => p.nome).join(", "),
+      motivo: l.Alerta || l.obs || "",
+    }));
+  const valorTotal = itens.reduce((s, i) => s + i.valor, 0);
+
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || ""} a ${fim || ""} — D9Pro`,
+    total: itens.length,
+    valorTotal,
+    itens: itens.slice(0, 1000),
+    truncado: itens.length > 1000,
   };
 }
 

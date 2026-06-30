@@ -110,6 +110,20 @@ app.get("/api/vendas", async (req, res) => {
   }
 });
 
+app.get("/api/cancelados", async (req, res) => {
+  if (!provider.configurado) {
+    return res.status(503).json({ erro: "ERP não configurado" });
+  }
+  try {
+    const { inicio, fim } = periodoDaQuery(req);
+    const dados = await provider.cancelados({ inicio, fim });
+    res.json(dados);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ erro: "Falha ao consultar cancelados no ERP", detalhe: String(err.message) });
+  }
+});
+
 app.get("/api/produtos", async (req, res) => {
   if (!provider.configurado) {
     return res.status(503).json({ erro: "ERP não configurado" });

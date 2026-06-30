@@ -15,6 +15,21 @@ const API_PRODUTOS = "/api/produtos";
 const API_COMISSOES = "/api/comissoes";
 const API_RESUMO = "/api/resumo";
 const API_VENDAS = "/api/vendas";
+const API_CANCELADOS = "/api/cancelados";
+
+const canceladosExemplo = {
+  nome: "Healthycann",
+  periodo: "Exercício 2026 — dados de exemplo",
+  total: 41,
+  valorTotal: 40231,
+  itens: [
+    { orderId: "5180", data: "03/06/2026 16:03", cliente: "Eduardo Conceição", cidade: "Curitiba", uf: "PR", valor: 382.1, produtos: "HC FOCUS", motivo: "" },
+    { orderId: "5174", data: "03/06/2026 14:10", cliente: "Dirce Fazola", cidade: "São Paulo", uf: "SP", valor: 1696, produtos: "HC FULL SPECTRUM (3000mg CBD), HC PLUS+", motivo: "" },
+    { orderId: "5168", data: "03/06/2026 08:16", cliente: "Katia Brunelli", cidade: "Itajaí", uf: "SC", valor: 1295, produtos: "HC BLISS (Delta 9: 10mg) GUMMY", motivo: "" },
+    { orderId: "5161", data: "02/06/2026 14:22", cliente: "Gislaine Teres", cidade: "Joinville", uf: "SC", valor: 650, produtos: "SERENE", motivo: "" },
+  ],
+  truncado: false,
+};
 
 const vendasExemplo = {
   nome: "Healthycann",
@@ -274,6 +289,7 @@ export default function PainelFaturamento() {
   const [produtos, setProdutos] = useState(produtosExemplo);
   const [comissoes, setComissoes] = useState(comissoesExemplo);
   const [vendas, setVendas] = useState(vendasExemplo);
+  const [cancelados, setCancelados] = useState(canceladosExemplo);
   const [ordenarVendas, setOrdenarVendas] = useState("faturamento");
   const [granVendas, setGranVendas] = useState("mes");
   const [metaMensal, setMetaMensal] = useState(() => {
@@ -337,6 +353,14 @@ export default function PainelFaturamento() {
       .catch(() => {});
   }, [periodo.inicio, periodo.fim]);
 
+  useEffect(() => {
+    const url = `${API_CANCELADOS}?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.itens) setCancelados(d); })
+      .catch(() => {});
+  }, [periodo.inicio, periodo.fim]);
+
   const r = dados.resumo || {};
   const pedidosFiltrados = useMemo(() => {
     const lista = dados.pedidos || [];
@@ -361,7 +385,7 @@ export default function PainelFaturamento() {
 
       <div className="fin-wrap">
         <div className="tabs">
-          {[["resumo", "Resumo"], ["visao", "Visão geral"], ["vendas", "Vendas"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
+          {[["resumo", "Resumo"], ["visao", "Visão geral"], ["vendas", "Vendas"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"], ["cancelados", "Cancelados"]].map(([id, nome]) => (
             <button key={id} className={"tab" + (aba === id ? " on" : "")} onClick={() => setAba(id)}>{nome}</button>
           ))}
         </div>
@@ -741,6 +765,48 @@ export default function PainelFaturamento() {
             </div>
             <p className="note">As colunas vêm direto do relatório <span style={{ fontFamily: "monospace" }}>/export/commission.php</span>. O total soma a coluna <b>{comissoes.colValor || "—"}</b> e o agrupamento usa <b>{comissoes.colOper || "—"}</b>. Se a detecção estiver errada no CSV real, ajustamos.</p>
           </>
+        )}
+
+        {/* ---------- CANCELADOS ---------- */}
+        {aba === "cancelados" && (
+          <div className="panel">
+            <div className="kpis" style={{ marginBottom: 16 }}>
+              <Kpi label="Pedidos cancelados" valor={int(cancelados.total)} sub="No período" />
+              <Kpi label="Valor cancelado" valor={brlK(cancelados.valorTotal)} sub="Soma dos pedidos cancelados" />
+            </div>
+            <div className="toolbar">
+              <div className="section-h" style={{ margin: 0 }}>Lista de cancelados ({int((cancelados.itens || []).length)})</div>
+              <button style={{ marginLeft: "auto" }} onClick={() => baixarCSV("pedidos-cancelados.csv",
+                ["Pedido", "Data", "Cliente", "Cidade", "UF", "Valor", "Produtos", "Motivo"],
+                (cancelados.itens || []).map((c) => [c.orderId, c.data, c.cliente, c.cidade, c.uf, numBR(c.valor), c.produtos, c.motivo]))}>
+                ↓ CSV
+              </button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Pedido</th><th>Data</th><th>Cliente</th><th>Cidade/UF</th>
+                  <th className="n">Valor</th><th>Produtos</th><th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(cancelados.itens || []).map((c) => (
+                  <tr key={c.orderId}>
+                    <td>#{c.orderId}</td>
+                    <td>{c.data}</td>
+                    <td>{c.cliente}</td>
+                    <td>{c.cidade}{c.uf ? `/${c.uf}` : ""}</td>
+                    <td className="n">{brl(c.valor)}</td>
+                    <td style={{ fontSize: 12, color: C.mute, maxWidth: 280 }}>{c.produtos}</td>
+                    <td>{c.motivo || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {cancelados.truncado && <p className="note">Lista limitada aos 1000 primeiros. Refine o período.</p>}
+            {!(cancelados.itens || []).length && <p className="note">Nenhum pedido cancelado no período.</p>}
+            <p className="note">O <b>motivo</b> do cancelamento não vem no relatório de pedidos (fica nas observações de cada pedido). Se você precisar do motivo, dá para buscar pedido a pedido — me avise.</p>
+          </div>
         )}
       </div>
     </div>

@@ -147,6 +147,20 @@ export async function vendas({ inicio, fim } = {}) {
   };
 }
 
+export async function cancelados({ inicio, fim } = {}) {
+  const itens = [
+    { orderId: "5180", data: "03/06/2026 16:03", cliente: "Eduardo Conceição", cidade: "Curitiba", uf: "PR", valor: 382.1, produtos: "HC FOCUS", motivo: "" },
+    { orderId: "5174", data: "03/06/2026 14:10", cliente: "Dirce Fazola", cidade: "São Paulo", uf: "SP", valor: 1696, produtos: "HC FULL SPECTRUM (3000mg CBD), HC PLUS+", motivo: "" },
+    { orderId: "5168", data: "03/06/2026 08:16", cliente: "Katia Brunelli", cidade: "Itajaí", uf: "SC", valor: 1295, produtos: "HC BLISS (Delta 9: 10mg) GUMMY", motivo: "" },
+    { orderId: "5161", data: "02/06/2026 14:22", cliente: "Gislaine Teres", cidade: "Joinville", uf: "SC", valor: 650, produtos: "SERENE", motivo: "" },
+  ];
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
+    total: 41, valorTotal: itens.reduce((s, i) => s + i.valor, 0) * 10, itens, truncado: false,
+  };
+}
+
 export async function comissoes({ inicio, fim } = {}) {
   const porOperador = [
     { nome: "Bruno L.", valor: 8200 },
