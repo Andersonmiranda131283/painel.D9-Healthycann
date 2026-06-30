@@ -97,24 +97,39 @@ export async function resumo({ inicio, fim } = {}) {
 
 export async function vendas({ inicio, fim } = {}) {
   const produtos = [
-    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 72323, pedidos: 91 },
-    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 72297, pedidos: 78 },
-    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 49166, pedidos: 49 },
-    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28580, pedidos: 23 },
-    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 27009, pedidos: 23 },
+    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 75830, pedidos: 78, ticketMedio: 972 },
+    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 67324, pedidos: 91, ticketMedio: 740 },
+    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 47558, pedidos: 49, ticketMedio: 971 },
+    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 29452, pedidos: 23, ticketMedio: 1281 },
+    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28860, pedidos: 23, ticketMedio: 1255 },
   ];
   const faturamento = produtos.reduce((s, p) => s + p.faturamento, 0);
+  const pedidos = 264;
   const porMes = [
-    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280 },
-    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 320 },
-    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 981 },
+    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280, variacao: null },
+    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 320, variacao: 0.1667 },
+    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 981, variacao: 2.156 },
   ];
   return {
     nome: "Healthycann",
     periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
-    resumo: { faturamento, pedidos: 264, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0) },
+    resumo: { faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos },
     produtos, porMes,
     porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }],
+    porEstado: [
+      { uf: "SC", valor: 116239, qtd: 102 }, { uf: "SP", valor: 77142, qtd: 68 },
+      { uf: "MG", valor: 61700, qtd: 43 }, { uf: "RJ", valor: 40348, qtd: 40 }, { uf: "PR", valor: 10607, qtd: 12 },
+    ],
+    porPagamento: [
+      { forma: "Cartão de crédito", valor: 205055, qtd: 169 },
+      { forma: "Não informado", valor: 146534, qtd: 145 },
+      { forma: "Boleto", valor: 1924, qtd: 2 },
+    ],
+    porPrescritor: [
+      { nome: "Tatiana A. P. Moraes", valor: 35107, qtd: 20 },
+      { nome: "Fernando B. Aparecido", valor: 32328, qtd: 32 },
+      { nome: "Maria Cecilia I. Barbosa", valor: 25592, qtd: 21 },
+    ],
   };
 }
 

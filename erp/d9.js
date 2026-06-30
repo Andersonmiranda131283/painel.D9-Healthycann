@@ -275,50 +275,82 @@ export async function comissoes({ inicio, fim } = {}) {
  * rateado pelo total do pedido dividido entre seus itens (a quantidade é exata).
  * Considera só pedidos válidos (coluna `pedidoValido` = 1).
  */
+const PAGAMENTO_LABEL = { credit: "Cartão de crédito", boleto: "Boleto", pix: "Pix" };
+const rotuloPagamento = (p) => PAGAMENTO_LABEL[p] || (p ? p : "Não informado");
+
 export async function vendas({ inicio, fim } = {}) {
   if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
 
   const texto = await csvCacheado("/export/orders.php", rangeExport(inicio, fim));
-  const { linhas } = parseCSV(texto);
+  const validos = parseCSV(texto).linhas.filter((l) => String(l.pedidoValido) === "1");
 
-  const porProduto = new Map();
-  const porDia = new Map();
-  const porMes = new Map();
+  // Passo 1: preço de referência por SKU (a partir de pedidos com um único SKU),
+  // para ratear o total dos pedidos misturados de forma proporcional ao preço.
+  const ref = {}, refN = {};
+  for (const l of validos) {
+    const t = numeroBR(l.orderTotal); if (t <= 0) continue;
+    const its = parseConteudo(l.conteudo); if (!its.length) continue;
+    if (new Set(its.map((i) => i.sku)).size === 1) {
+      const k = its[0].sku;
+      ref[k] = (ref[k] || 0) + t / its.length; refN[k] = (refN[k] || 0) + 1;
+    }
+  }
+  for (const k in ref) ref[k] /= refN[k];
+
+  const porProduto = new Map(), porEstado = new Map(), porPagamento = new Map(), porPrescritor = new Map();
+  const porDia = new Map(), porMes = new Map();
   let faturamento = 0, pedidos = 0, itensVendidos = 0;
 
-  for (const l of linhas) {
-    if (String(l.pedidoValido) !== "1") continue; // só pedidos válidos
+  for (const l of validos) {
     pedidos++;
     const total = numeroBR(l.orderTotal);
     faturamento += total;
     const { chaveDia, chaveMes } = dataCSV(l.createTime);
     acc(porDia, chaveDia, total);
     acc(porMes, chaveMes, total);
+    acc(porEstado, l.addressState || "—", total);
+    acc(porPagamento, rotuloPagamento(l.payMethod), total);
+    acc(porPrescritor, l["nome prescritor"] || "—", total);
 
     const itens = parseConteudo(l.conteudo);
     itensVendidos += itens.length;
-    const unit = itens.length ? total / itens.length : 0; // rateio por item
-    for (const it of itens) {
+    const pesos = itens.map((i) => ref[i.sku] || 1);
+    const soma = pesos.reduce((a, b) => a + b, 0) || itens.length || 1;
+    itens.forEach((it, i) => {
+      const share = total * (pesos[i] / soma); // rateio proporcional ao preço de referência
       const k = it.nome || it.sku || "?";
       const p = porProduto.get(k) || { nome: it.nome || k, sku: it.sku, quantidade: 0, faturamento: 0, pedidos: new Set() };
-      p.quantidade += 1; p.faturamento += unit; p.pedidos.add(l.orderId);
+      p.quantidade += 1; p.faturamento += share; p.pedidos.add(l.orderId);
       porProduto.set(k, p);
-    }
+    });
   }
 
-  const produtos = [...porProduto.values()]
-    .map((p) => ({ nome: p.nome, sku: p.sku, quantidade: p.quantidade, faturamento: p.faturamento, pedidos: p.pedidos.size }))
-    .sort((a, b) => b.faturamento - a.faturamento);
+  const produtos = [...porProduto.values()].map((p) => ({
+    nome: p.nome, sku: p.sku, quantidade: p.quantidade, faturamento: p.faturamento,
+    pedidos: p.pedidos.size, ticketMedio: p.pedidos.size ? p.faturamento / p.pedidos.size : 0,
+  })).sort((a, b) => b.faturamento - a.faturamento);
+
+  const lista = (m, chaveNome) => [...m.entries()]
+    .map(([k, v]) => ({ [chaveNome]: k, valor: v.valor, qtd: v.qtd }))
+    .sort((a, b) => b.valor - a.valor);
+
   const porMesArr = [...porMes.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([chave, v]) => ({ chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd }));
+    .map(([chave, v], i, arr) => {
+      const prev = i > 0 ? arr[i - 1][1].valor : null;
+      return { chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd, variacao: prev ? (v.valor - prev) / prev : null };
+    });
   const porDiaArr = [...porDia.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([chave, v]) => ({ chave, valor: v.valor, qtd: v.qtd }));
 
   return {
     nome: "Healthycann",
     periodo: `${inicio || ""} a ${fim || ""} — D9Pro`,
-    resumo: { faturamento, pedidos, itensVendidos },
-    produtos, porMes: porMesArr, porDia: porDiaArr,
+    resumo: { faturamento, pedidos, itensVendidos, ticketMedio: pedidos ? faturamento / pedidos : 0 },
+    produtos,
+    porMes: porMesArr, porDia: porDiaArr,
+    porEstado: lista(porEstado, "uf"),
+    porPagamento: lista(porPagamento, "forma"),
+    porPrescritor: lista(porPrescritor, "nome"),
   };
 }
 

@@ -446,14 +446,13 @@ export default function PainelFaturamento() {
           const totalFat = vendas.resumo?.faturamento || 0;
           const lista = [...(vendas.produtos || [])].sort((a, b) =>
             ordenarVendas === "quantidade" ? b.quantidade - a.quantidade : b.faturamento - a.faturamento);
-          const maxBar = Math.max(1, ...(vendas.porMes || []).map((m) => m.valor));
           return (
             <>
               <div className="kpis">
                 <Kpi label="Faturamento" valor={brlK(totalFat)} sub="Pedidos válidos no período" />
                 <Kpi label="Pedidos" valor={int(vendas.resumo?.pedidos)} sub="Com venda no período" />
-                <Kpi label="Itens vendidos" valor={int(vendas.resumo?.itensVendidos)} sub="Unidades (todos os produtos)" />
-                <Kpi label="Produtos distintos" valor={int(lista.length)} sub="Com venda no período" />
+                <Kpi label="Ticket médio" valor={brlK(vendas.resumo?.ticketMedio)} sub="Faturamento ÷ pedidos" />
+                <Kpi label="Itens vendidos" valor={int(vendas.resumo?.itensVendidos)} sub={`${int(lista.length)} produtos distintos`} />
               </div>
 
               <div className="panel" style={{ marginTop: 18 }}>
@@ -467,7 +466,39 @@ export default function PainelFaturamento() {
                     <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={38} />
                   </BarChart>
                 </ResponsiveContainer>
-                <p className="note">Tem detalhamento diário em <span style={{ fontFamily: "monospace" }}>porDia</span> ({int((vendas.porDia || []).length)} dias) — dá pra abrir por dia se você quiser.</p>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
+                  {(vendas.porMes || []).map((m) => (
+                    <span key={m.chave} style={{ fontSize: 12, color: C.mute }}>
+                      <b style={{ color: C.ink }}>{m.mes}</b> {brlK(m.valor)}
+                      {m.variacao != null && (
+                        <span style={{ color: m.variacao >= 0 ? C.emerald : C.brick, marginLeft: 4 }}>
+                          {m.variacao >= 0 ? "▲" : "▼"} {pctDe(Math.abs(m.variacao), 1)}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid2">
+                <div className="panel">
+                  <div className="section-h">Por estado (UF)</div>
+                  <BarrasHorizontais dados={(vendas.porEstado || []).slice(0, 10).map((e) => ({ label: e.uf, valor: e.valor, qtd: e.qtd }))} />
+                </div>
+                <div className="panel">
+                  <div className="section-h">Por forma de pagamento</div>
+                  <BarrasHorizontais dados={(vendas.porPagamento || []).map((p) => ({ label: p.forma, valor: p.valor, qtd: p.qtd }))} />
+                </div>
+              </div>
+
+              <div className="panel" style={{ marginTop: 18 }}>
+                <div className="toolbar">
+                  <div className="section-h" style={{ margin: 0 }}>Por prescritor (top 10)</div>
+                  <button style={{ marginLeft: "auto" }} onClick={() => baixarCSV("vendas-por-prescritor.csv",
+                    ["Prescritor", "Faturamento", "Pedidos"],
+                    (vendas.porPrescritor || []).map((p) => [p.nome, numBR(p.valor), p.qtd]))}>↓ CSV</button>
+                </div>
+                <BarrasHorizontais dados={(vendas.porPrescritor || []).slice(0, 10).map((p) => ({ label: p.nome, valor: p.valor, qtd: p.qtd }))} />
               </div>
 
               <div className="panel" style={{ marginTop: 18 }}>
@@ -479,8 +510,8 @@ export default function PainelFaturamento() {
                     <option value="quantidade">Quantidade</option>
                   </select>
                   <button onClick={() => baixarCSV("vendas-por-produto.csv",
-                    ["Produto", "SKU", "Quantidade", "Faturamento", "Pedidos", "% faturamento"],
-                    lista.map((p) => [p.nome, p.sku, p.quantidade, numBR(p.faturamento), p.pedidos, pctDe(p.faturamento, totalFat)]))}>
+                    ["Produto", "SKU", "Quantidade", "Faturamento", "Pedidos", "Ticket médio", "% faturamento"],
+                    lista.map((p) => [p.nome, p.sku, p.quantidade, numBR(p.faturamento), p.pedidos, numBR(p.ticketMedio), pctDe(p.faturamento, totalFat)]))}>
                     ↓ CSV
                   </button>
                 </div>
@@ -488,7 +519,8 @@ export default function PainelFaturamento() {
                   <thead>
                     <tr>
                       <th>Produto</th><th>SKU</th><th className="n">Qtd</th>
-                      <th className="n">Faturamento</th><th className="n">Pedidos</th><th className="n">% fat.</th>
+                      <th className="n">Faturamento</th><th className="n">Pedidos</th>
+                      <th className="n">Ticket méd.</th><th className="n">% fat.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -499,6 +531,7 @@ export default function PainelFaturamento() {
                         <td className="n">{int(p.quantidade)}</td>
                         <td className="n"><b>{brl(p.faturamento)}</b></td>
                         <td className="n">{int(p.pedidos)}</td>
+                        <td className="n">{brl(p.ticketMedio)}</td>
                         <td className="n">{pctDe(p.faturamento, totalFat)}</td>
                       </tr>
                     ))}
