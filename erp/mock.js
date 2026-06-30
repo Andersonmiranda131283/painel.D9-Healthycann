@@ -115,7 +115,7 @@ export async function vendas({ inicio, fim } = {}) {
   return {
     nome: "Healthycann",
     periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
-    resumo: { faturamento, custo, lucro: faturamento - custo, margem: (faturamento - custo) / faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos },
+    resumo: { faturamento, custo, lucro: faturamento - custo, margem: (faturamento - custo) / faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos, metaMensal: 400000 },
     produtos, porMes,
     porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }, { chave: "2026-06-03", valor: 5400, qtd: 12 }],
     porGrupo: [{ grupo: "Comum", valor: 325326, qtd: 295 }, { grupo: "Armazém", valor: 27313, qtd: 7 }, { grupo: "Comissão", valor: 874, qtd: 8 }],

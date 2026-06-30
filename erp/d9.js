@@ -277,6 +277,8 @@ export async function comissoes({ inicio, fim } = {}) {
  */
 const PAGAMENTO_LABEL = { credit: "Cartão de crédito", boleto: "Boleto", pix: "Pix" };
 const rotuloPagamento = (p) => PAGAMENTO_LABEL[p] || (p ? p : "Não informado");
+// Meta de faturamento mensal padrão (o painel também deixa editar na tela).
+const META_MENSAL = Number(String(process.env.D9_META_MENSAL || "").replace(/\./g, "").replace(",", ".")) || null;
 
 export async function vendas({ inicio, fim } = {}) {
   if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
@@ -360,6 +362,7 @@ export async function vendas({ inicio, fim } = {}) {
     resumo: {
       faturamento, custo, lucro, margem: faturamento > 0 ? lucro / faturamento : null,
       pedidos, itensVendidos, ticketMedio: pedidos ? faturamento / pedidos : 0,
+      metaMensal: META_MENSAL,
     },
     produtos,
     porMes: porMesArr, porDia: porDiaArr,

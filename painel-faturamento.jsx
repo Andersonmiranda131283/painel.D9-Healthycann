@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, BarChart,
-  XAxis, YAxis, CartesianGrid, Tooltip, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine,
 } from "recharts";
 
 /* ============================================================
@@ -272,6 +272,15 @@ export default function PainelFaturamento() {
   const [vendas, setVendas] = useState(vendasExemplo);
   const [ordenarVendas, setOrdenarVendas] = useState("faturamento");
   const [granVendas, setGranVendas] = useState("mes");
+  const [metaMensal, setMetaMensal] = useState(() => {
+    const salvo = typeof localStorage !== "undefined" ? Number(localStorage.getItem("metaMensal")) : 0;
+    return salvo || 0;
+  });
+  function salvarMeta(v) {
+    const n = Math.max(0, Number(v) || 0);
+    setMetaMensal(n);
+    if (typeof localStorage !== "undefined") localStorage.setItem("metaMensal", String(n));
+  }
   const [carregando, setCarregando] = useState(true);
   const [erroApi, setErroApi] = useState(null);
   const [atualizadoEm, setAtualizadoEm] = useState(null);
@@ -451,6 +460,9 @@ export default function PainelFaturamento() {
           const serie = granVendas === "dia"
             ? (vendas.porDia || []).map((d) => ({ rotulo: `${d.chave.slice(8)}/${d.chave.slice(5, 7)}`, valor: d.valor }))
             : (vendas.porMes || []).map((m) => ({ rotulo: m.mes, valor: m.valor }));
+          const meta = metaMensal > 0 ? metaMensal : (vendas.resumo?.metaMensal || 0);
+          const ultimoMes = (vendas.porMes || [])[(vendas.porMes || []).length - 1];
+          const maxY = Math.max(1, granVendas === "mes" ? meta : 0, ...serie.map((s) => s.valor));
           return (
             <>
               <div className="kpis">
@@ -463,17 +475,30 @@ export default function PainelFaturamento() {
               <div className="panel" style={{ marginTop: 18 }}>
                 <div className="toolbar">
                   <div className="section-h" style={{ margin: 0 }}>Vendas por {granVendas === "dia" ? "dia" : "mês"}</div>
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                    <button className={"preset" + (granVendas === "mes" ? " on" : "")} style={{ background: granVendas === "mes" ? C.emerald : C.surface, color: granVendas === "mes" ? "#fff" : C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => setGranVendas("mes")}>Mês</button>
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: C.mute }}>Meta/mês: R$</span>
+                  <input type="number" min="0" step="1000" value={metaMensal || ""} placeholder={meta ? String(meta) : "0"}
+                    onChange={(e) => salvarMeta(e.target.value)}
+                    style={{ width: 110, fontSize: 12, padding: "6px 8px", border: `1px solid ${C.line}`, borderRadius: 8 }} />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button style={{ background: granVendas === "mes" ? C.emerald : C.surface, color: granVendas === "mes" ? "#fff" : C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => setGranVendas("mes")}>Mês</button>
                     <button style={{ background: granVendas === "dia" ? C.emerald : C.surface, color: granVendas === "dia" ? "#fff" : C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => setGranVendas("dia")}>Dia</button>
                   </div>
                 </div>
+                {meta > 0 && ultimoMes && (
+                  <p className="note" style={{ marginTop: 0 }}>
+                    Meta mensal <b>{brlK(meta)}</b> · {ultimoMes.mes}: <b style={{ color: ultimoMes.valor >= meta ? C.emerald : C.gold }}>{brlK(ultimoMes.valor)}</b> ({pctDe(ultimoMes.valor, meta)} da meta{ultimoMes.valor < meta ? ` · faltam ${brlK(meta - ultimoMes.valor)}` : " ✓ batida"})
+                  </p>
+                )}
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={serie}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
                     <XAxis dataKey="rotulo" tick={{ fontSize: 11, fill: C.mute }} interval="preserveStartEnd" />
-                    <YAxis tickFormatter={(v) => "R$" + Math.round(v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
+                    <YAxis domain={[0, Math.ceil(maxY * 1.08)]} tickFormatter={(v) => "R$" + Math.round(v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
                     <Tooltip formatter={(v) => brl(v)} />
+                    {granVendas === "mes" && meta > 0 && (
+                      <ReferenceLine y={meta} stroke={C.gold} strokeDasharray="4 4"
+                        label={{ value: "Meta", fill: C.gold, fontSize: 11, position: "insideTopRight" }} />
+                    )}
                     <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -484,6 +509,11 @@ export default function PainelFaturamento() {
                       {m.variacao != null && (
                         <span style={{ color: m.variacao >= 0 ? C.emerald : C.brick, marginLeft: 4 }}>
                           {m.variacao >= 0 ? "▲" : "▼"} {pctDe(Math.abs(m.variacao), 1)}
+                        </span>
+                      )}
+                      {meta > 0 && (
+                        <span style={{ color: m.valor >= meta ? C.emerald : C.mute, marginLeft: 4 }}>
+                          · {pctDe(m.valor, meta)} da meta
                         </span>
                       )}
                     </span>
