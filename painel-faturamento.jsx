@@ -271,6 +271,7 @@ export default function PainelFaturamento() {
   const [comissoes, setComissoes] = useState(comissoesExemplo);
   const [vendas, setVendas] = useState(vendasExemplo);
   const [ordenarVendas, setOrdenarVendas] = useState("faturamento");
+  const [granVendas, setGranVendas] = useState("mes");
   const [carregando, setCarregando] = useState(true);
   const [erroApi, setErroApi] = useState(null);
   const [atualizadoEm, setAtualizadoEm] = useState(null);
@@ -446,24 +447,34 @@ export default function PainelFaturamento() {
           const totalFat = vendas.resumo?.faturamento || 0;
           const lista = [...(vendas.produtos || [])].sort((a, b) =>
             ordenarVendas === "quantidade" ? b.quantidade - a.quantidade : b.faturamento - a.faturamento);
+          const r = vendas.resumo || {};
+          const serie = granVendas === "dia"
+            ? (vendas.porDia || []).map((d) => ({ rotulo: `${d.chave.slice(8)}/${d.chave.slice(5, 7)}`, valor: d.valor }))
+            : (vendas.porMes || []).map((m) => ({ rotulo: m.mes, valor: m.valor }));
           return (
             <>
               <div className="kpis">
                 <Kpi label="Faturamento" valor={brlK(totalFat)} sub="Pedidos válidos no período" />
-                <Kpi label="Pedidos" valor={int(vendas.resumo?.pedidos)} sub="Com venda no período" />
-                <Kpi label="Ticket médio" valor={brlK(vendas.resumo?.ticketMedio)} sub="Faturamento ÷ pedidos" />
-                <Kpi label="Itens vendidos" valor={int(vendas.resumo?.itensVendidos)} sub={`${int(lista.length)} produtos distintos`} />
+                <Kpi label="Lucro bruto" valor={brlK(r.lucro)} sub={r.margem != null ? `margem ${pctDe(r.lucro, totalFat)}` : "—"} />
+                <Kpi label="Ticket médio" valor={brlK(r.ticketMedio)} sub="Faturamento ÷ pedidos" />
+                <Kpi label="Pedidos" valor={int(r.pedidos)} sub={`${int(r.itensVendidos)} itens · ${int(lista.length)} produtos`} />
               </div>
 
               <div className="panel" style={{ marginTop: 18 }}>
-                <div className="section-h">Vendas por mês</div>
+                <div className="toolbar">
+                  <div className="section-h" style={{ margin: 0 }}>Vendas por {granVendas === "dia" ? "dia" : "mês"}</div>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                    <button className={"preset" + (granVendas === "mes" ? " on" : "")} style={{ background: granVendas === "mes" ? C.emerald : C.surface, color: granVendas === "mes" ? "#fff" : C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => setGranVendas("mes")}>Mês</button>
+                    <button style={{ background: granVendas === "dia" ? C.emerald : C.surface, color: granVendas === "dia" ? "#fff" : C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => setGranVendas("dia")}>Dia</button>
+                  </div>
+                </div>
                 <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={vendas.porMes || []}>
+                  <BarChart data={serie}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-                    <XAxis dataKey="mes" tick={{ fontSize: 12, fill: C.mute }} />
+                    <XAxis dataKey="rotulo" tick={{ fontSize: 11, fill: C.mute }} interval="preserveStartEnd" />
                     <YAxis tickFormatter={(v) => "R$" + Math.round(v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
                     <Tooltip formatter={(v) => brl(v)} />
-                    <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={38} />
+                    <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
@@ -491,6 +502,17 @@ export default function PainelFaturamento() {
                 </div>
               </div>
 
+              <div className="grid2">
+                <div className="panel">
+                  <div className="section-h">Por grupo de pedido</div>
+                  <BarrasHorizontais dados={(vendas.porGrupo || []).filter((g) => g.valor > 0).map((g) => ({ label: g.grupo, valor: g.valor, qtd: g.qtd }))} />
+                </div>
+                <div className="panel">
+                  <div className="section-h">Por cidade (top 10)</div>
+                  <BarrasHorizontais dados={(vendas.porCidade || []).slice(0, 10).map((c) => ({ label: c.cidade, valor: c.valor, qtd: c.qtd }))} />
+                </div>
+              </div>
+
               <div className="panel" style={{ marginTop: 18 }}>
                 <div className="toolbar">
                   <div className="section-h" style={{ margin: 0 }}>Por prescritor (top 10)</div>
@@ -510,8 +532,8 @@ export default function PainelFaturamento() {
                     <option value="quantidade">Quantidade</option>
                   </select>
                   <button onClick={() => baixarCSV("vendas-por-produto.csv",
-                    ["Produto", "SKU", "Quantidade", "Faturamento", "Pedidos", "Ticket médio", "% faturamento"],
-                    lista.map((p) => [p.nome, p.sku, p.quantidade, numBR(p.faturamento), p.pedidos, numBR(p.ticketMedio), pctDe(p.faturamento, totalFat)]))}>
+                    ["Produto", "SKU", "Quantidade", "Faturamento", "Lucro", "Margem", "Pedidos", "Ticket médio", "% faturamento"],
+                    lista.map((p) => [p.nome, p.sku, p.quantidade, numBR(p.faturamento), numBR(p.lucro), p.margem != null ? Math.round(p.margem * 100) + "%" : "", p.pedidos, numBR(p.ticketMedio), pctDe(p.faturamento, totalFat)]))}>
                     ↓ CSV
                   </button>
                 </div>
@@ -519,7 +541,7 @@ export default function PainelFaturamento() {
                   <thead>
                     <tr>
                       <th>Produto</th><th>SKU</th><th className="n">Qtd</th>
-                      <th className="n">Faturamento</th><th className="n">Pedidos</th>
+                      <th className="n">Faturamento</th><th className="n">Lucro</th><th className="n">Margem</th>
                       <th className="n">Ticket méd.</th><th className="n">% fat.</th>
                     </tr>
                   </thead>
@@ -530,7 +552,8 @@ export default function PainelFaturamento() {
                         <td style={{ fontFamily: "monospace", color: C.mute }}>{p.sku}</td>
                         <td className="n">{int(p.quantidade)}</td>
                         <td className="n"><b>{brl(p.faturamento)}</b></td>
-                        <td className="n">{int(p.pedidos)}</td>
+                        <td className="n">{brl(p.lucro)}</td>
+                        <td className="n">{p.margem != null ? pct(p.margem) : "—"}</td>
                         <td className="n">{brl(p.ticketMedio)}</td>
                         <td className="n">{pctDe(p.faturamento, totalFat)}</td>
                       </tr>

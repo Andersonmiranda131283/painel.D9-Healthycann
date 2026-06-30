@@ -96,14 +96,16 @@ export async function resumo({ inicio, fim } = {}) {
 }
 
 export async function vendas({ inicio, fim } = {}) {
-  const produtos = [
-    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 75830, pedidos: 78, ticketMedio: 972 },
-    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 67324, pedidos: 91, ticketMedio: 740 },
-    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 47558, pedidos: 49, ticketMedio: 971 },
-    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 29452, pedidos: 23, ticketMedio: 1281 },
-    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28860, pedidos: 23, ticketMedio: 1255 },
+  const base = [
+    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 75830, custo: 9925, pedidos: 78, ticketMedio: 972 },
+    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 67324, custo: 16327, pedidos: 91, ticketMedio: 740 },
+    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 47558, custo: 9285, pedidos: 49, ticketMedio: 971 },
+    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 29452, custo: 5967, pedidos: 23, ticketMedio: 1281 },
+    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28860, custo: 5119, pedidos: 23, ticketMedio: 1255 },
   ];
+  const produtos = base.map((p) => ({ ...p, lucro: p.faturamento - p.custo, margem: (p.faturamento - p.custo) / p.faturamento }));
   const faturamento = produtos.reduce((s, p) => s + p.faturamento, 0);
+  const custo = produtos.reduce((s, p) => s + p.custo, 0);
   const pedidos = 264;
   const porMes = [
     { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280, variacao: null },
@@ -113,9 +115,14 @@ export async function vendas({ inicio, fim } = {}) {
   return {
     nome: "Healthycann",
     periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
-    resumo: { faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos },
+    resumo: { faturamento, custo, lucro: faturamento - custo, margem: (faturamento - custo) / faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos },
     produtos, porMes,
-    porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }],
+    porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }, { chave: "2026-06-03", valor: 5400, qtd: 12 }],
+    porGrupo: [{ grupo: "Comum", valor: 325326, qtd: 295 }, { grupo: "Armazém", valor: 27313, qtd: 7 }, { grupo: "Comissão", valor: 874, qtd: 8 }],
+    porCidade: [
+      { cidade: "Balneário Camboriú", valor: 33923, qtd: 33 }, { cidade: "São Paulo", valor: 33596, qtd: 33 },
+      { cidade: "Itajaí", valor: 28414, qtd: 19 }, { cidade: "Rio de Janeiro", valor: 16216, qtd: 19 }, { cidade: "Itapema", valor: 10321, qtd: 7 },
+    ],
     porEstado: [
       { uf: "SC", valor: 116239, qtd: 102 }, { uf: "SP", valor: 77142, qtd: 68 },
       { uf: "MG", valor: 61700, qtd: 43 }, { uf: "RJ", valor: 40348, qtd: 40 }, { uf: "PR", valor: 10607, qtd: 12 },
