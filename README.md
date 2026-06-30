@@ -46,6 +46,9 @@ ERP_PROVIDER=mock npm start
 - **Visão geral** — faturamento, **recebido × a receber**, nº de pedidos,
   ticket médio; faturamento por mês (gráfico); por status (recebido/a receber)
   e por grupo.
+- **Vendas** — relatório por **produto** (quantidade, faturamento, nº de pedidos,
+  % do total) e por **data** (gráfico mensal), a partir do relatório
+  `/export/orders.php` (coluna `conteudo`). Ordenação e export CSV.
 - **Pedidos** — tabela de pedidos do período, filtro por status e export CSV.
 - **Produtos** — catálogo com **preço/custo/margem** (regras de preço da D9Pro).
 - **Comissões** — total e por operador, a partir do CSV `/export/commission.php`.

@@ -14,6 +14,26 @@ const API_OPERACAO =
 const API_PRODUTOS = "/api/produtos";
 const API_COMISSOES = "/api/comissoes";
 const API_RESUMO = "/api/resumo";
+const API_VENDAS = "/api/vendas";
+
+const vendasExemplo = {
+  nome: "Healthycann",
+  periodo: "Exercício 2026 — dados de exemplo",
+  resumo: { faturamento: 249375, pedidos: 264, itensVendidos: 700 },
+  produtos: [
+    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 72323, pedidos: 91 },
+    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 72297, pedidos: 78 },
+    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 49166, pedidos: 49 },
+    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28580, pedidos: 23 },
+    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 27009, pedidos: 23 },
+  ],
+  porMes: [
+    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280 },
+    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 320 },
+    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 981 },
+  ],
+  porDia: [],
+};
 
 const resumoExemplo = {
   nome: "Healthycann",
@@ -249,6 +269,8 @@ export default function PainelFaturamento() {
   const [resumo, setResumo] = useState(resumoExemplo);
   const [produtos, setProdutos] = useState(produtosExemplo);
   const [comissoes, setComissoes] = useState(comissoesExemplo);
+  const [vendas, setVendas] = useState(vendasExemplo);
+  const [ordenarVendas, setOrdenarVendas] = useState("faturamento");
   const [carregando, setCarregando] = useState(true);
   const [erroApi, setErroApi] = useState(null);
   const [atualizadoEm, setAtualizadoEm] = useState(null);
@@ -293,6 +315,14 @@ export default function PainelFaturamento() {
       .catch(() => {});
   }, [periodo.inicio, periodo.fim]);
 
+  useEffect(() => {
+    const url = `${API_VENDAS}?inicio=${encodeURIComponent(periodo.inicio)}&fim=${encodeURIComponent(periodo.fim)}`;
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.produtos) setVendas(d); })
+      .catch(() => {});
+  }, [periodo.inicio, periodo.fim]);
+
   const r = dados.resumo || {};
   const pedidosFiltrados = useMemo(() => {
     const lista = dados.pedidos || [];
@@ -317,7 +347,7 @@ export default function PainelFaturamento() {
 
       <div className="fin-wrap">
         <div className="tabs">
-          {[["resumo", "Resumo"], ["visao", "Visão geral"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
+          {[["resumo", "Resumo"], ["visao", "Visão geral"], ["vendas", "Vendas"], ["pedidos", "Pedidos"], ["produtos", "Produtos"], ["comissoes", "Comissões"]].map(([id, nome]) => (
             <button key={id} className={"tab" + (aba === id ? " on" : "")} onClick={() => setAba(id)}>{nome}</button>
           ))}
         </div>
@@ -410,6 +440,76 @@ export default function PainelFaturamento() {
             </div>
           </>
         )}
+
+        {/* ---------- VENDAS (por produto e por data) ---------- */}
+        {aba === "vendas" && (() => {
+          const totalFat = vendas.resumo?.faturamento || 0;
+          const lista = [...(vendas.produtos || [])].sort((a, b) =>
+            ordenarVendas === "quantidade" ? b.quantidade - a.quantidade : b.faturamento - a.faturamento);
+          const maxBar = Math.max(1, ...(vendas.porMes || []).map((m) => m.valor));
+          return (
+            <>
+              <div className="kpis">
+                <Kpi label="Faturamento" valor={brlK(totalFat)} sub="Pedidos válidos no período" />
+                <Kpi label="Pedidos" valor={int(vendas.resumo?.pedidos)} sub="Com venda no período" />
+                <Kpi label="Itens vendidos" valor={int(vendas.resumo?.itensVendidos)} sub="Unidades (todos os produtos)" />
+                <Kpi label="Produtos distintos" valor={int(lista.length)} sub="Com venda no período" />
+              </div>
+
+              <div className="panel" style={{ marginTop: 18 }}>
+                <div className="section-h">Vendas por mês</div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={vendas.porMes || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                    <XAxis dataKey="mes" tick={{ fontSize: 12, fill: C.mute }} />
+                    <YAxis tickFormatter={(v) => "R$" + Math.round(v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
+                    <Tooltip formatter={(v) => brl(v)} />
+                    <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={38} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <p className="note">Tem detalhamento diário em <span style={{ fontFamily: "monospace" }}>porDia</span> ({int((vendas.porDia || []).length)} dias) — dá pra abrir por dia se você quiser.</p>
+              </div>
+
+              <div className="panel" style={{ marginTop: 18 }}>
+                <div className="toolbar">
+                  <div className="section-h" style={{ margin: 0 }}>Vendas por produto ({int(lista.length)})</div>
+                  <span style={{ fontSize: 12, color: C.mute, marginLeft: "auto" }}>ordenar:</span>
+                  <select value={ordenarVendas} onChange={(e) => setOrdenarVendas(e.target.value)}>
+                    <option value="faturamento">Faturamento</option>
+                    <option value="quantidade">Quantidade</option>
+                  </select>
+                  <button onClick={() => baixarCSV("vendas-por-produto.csv",
+                    ["Produto", "SKU", "Quantidade", "Faturamento", "Pedidos", "% faturamento"],
+                    lista.map((p) => [p.nome, p.sku, p.quantidade, numBR(p.faturamento), p.pedidos, pctDe(p.faturamento, totalFat)]))}>
+                    ↓ CSV
+                  </button>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Produto</th><th>SKU</th><th className="n">Qtd</th>
+                      <th className="n">Faturamento</th><th className="n">Pedidos</th><th className="n">% fat.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lista.map((p) => (
+                      <tr key={p.sku || p.nome}>
+                        <td>{p.nome}</td>
+                        <td style={{ fontFamily: "monospace", color: C.mute }}>{p.sku}</td>
+                        <td className="n">{int(p.quantidade)}</td>
+                        <td className="n"><b>{brl(p.faturamento)}</b></td>
+                        <td className="n">{int(p.pedidos)}</td>
+                        <td className="n">{pctDe(p.faturamento, totalFat)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!lista.length && <p className="note">Nenhuma venda no período.</p>}
+                <p className="note">Quantidade vem exata da composição do pedido; o faturamento por produto é rateado pelo total do pedido entre seus itens.</p>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ---------- PEDIDOS ---------- */}
         {aba === "pedidos" && (

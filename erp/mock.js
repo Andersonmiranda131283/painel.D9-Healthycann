@@ -95,6 +95,29 @@ export async function resumo({ inicio, fim } = {}) {
   };
 }
 
+export async function vendas({ inicio, fim } = {}) {
+  const produtos = [
+    { nome: "HC BLISS (Delta 9: 10mg) GUMMY", sku: "BL10", quantidade: 268, faturamento: 72323, pedidos: 91 },
+    { nome: "HC FULL SPECTRUM (3000mg CBD)", sku: "FS3000", quantidade: 158, faturamento: 72297, pedidos: 78 },
+    { nome: "HC FULL SPECTRUM (1500mg CBD)", sku: "FS1500", quantidade: 157, faturamento: 49166, pedidos: 49 },
+    { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28580, pedidos: 23 },
+    { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 27009, pedidos: 23 },
+  ];
+  const faturamento = produtos.reduce((s, p) => s + p.faturamento, 0);
+  const porMes = [
+    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280 },
+    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 320 },
+    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 981 },
+  ];
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
+    resumo: { faturamento, pedidos: 264, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0) },
+    produtos, porMes,
+    porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }],
+  };
+}
+
 export async function comissoes({ inicio, fim } = {}) {
   const porOperador = [
     { nome: "Bruno L.", valor: 8200 },

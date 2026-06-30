@@ -96,6 +96,20 @@ app.get("/api/operacao", async (req, res) => {
   }
 });
 
+app.get("/api/vendas", async (req, res) => {
+  if (!provider.configurado) {
+    return res.status(503).json({ erro: "ERP não configurado" });
+  }
+  try {
+    const { inicio, fim } = periodoDaQuery(req);
+    const dados = await provider.vendas({ inicio, fim });
+    res.json(dados);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ erro: "Falha ao consultar vendas no ERP", detalhe: String(err.message) });
+  }
+});
+
 app.get("/api/produtos", async (req, res) => {
   if (!provider.configurado) {
     return res.status(503).json({ erro: "ERP não configurado" });

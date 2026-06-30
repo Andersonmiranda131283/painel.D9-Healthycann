@@ -15,7 +15,7 @@
  *   D9_STATUS_RECEBIDOS = (opcional) IDs de status que contam como pago/entregue,
  *                         ex.: "8,16". Sem isso, usa heurística pelo rótulo.
  */
-import { contratoVazio, agregarPedidos } from "./contrato.js";
+import { contratoVazio, agregarPedidos, rotuloMes } from "./contrato.js";
 import { parseCSV, acharColuna, numeroBR } from "./csv.js";
 
 const API_URL = process.env.D9_API_URL || "";
@@ -112,10 +112,47 @@ export async function testarConexao() {
   return chamar("/user/me.php");
 }
 
-/** "dd/mm/aaaa" → range D9Pro "dd/mm/aaaa 00:00 - dd/mm/aaaa 23:59". */
+/** "dd/mm/aaaa" → range D9Pro "dd/mm/aaaa 00:00 - dd/mm/aaaa 23:59" (endpoints JSON). */
 function rangeData(inicio, fim) {
   if (!inicio || !fim) return undefined;
   return `${inicio} 00:00 - ${fim} 23:59`;
+}
+
+/** "dd/mm/aaaa" → "aaaa-mm-dd HH:MM:SS" (parâmetros s/e dos relatórios /export). */
+function isoData(br, fimDoDia = false) {
+  const m = String(br || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  return `${y}-${mo}-${d} ${fimDoDia ? "23:59:59" : "00:00:00"}`;
+}
+/** Parâmetros de data dos relatórios CSV: { s, e }. */
+function rangeExport(inicio, fim) {
+  const s = isoData(inicio, false), e = isoData(fim, true);
+  return s && e ? { s, e } : {};
+}
+
+/** Quebra a coluna `conteudo` do export em itens { nome, sku }. */
+function parseConteudo(s) {
+  return String(s || "")
+    .split(/\s*\\+\s*/).map((x) => x.trim()).filter(Boolean)
+    .map((item) => {
+      const nome = item.split(/\s*:\s*SKU:/i)[0].trim();
+      const sku = (item.match(/SKU:\s*([^,]+)/i) || [])[1];
+      return { nome, sku: sku ? sku.trim() : "" };
+    });
+}
+
+/** "dd/mm/aaaa hh:mm" (formato do CSV) → chaves de dia/mês. */
+function dataCSV(createTime) {
+  const m = String(createTime || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return { chaveDia: "", chaveMes: "", dataBR: "" };
+  const [, d, mo, y] = m;
+  return { chaveDia: `${y}-${mo}-${d}`, chaveMes: `${y}-${mo}`, dataBR: `${d}/${mo}/${y}` };
+}
+
+function acc(mapa, chave, valor) {
+  const a = mapa.get(chave) || { valor: 0, qtd: 0 };
+  a.valor += valor || 0; a.qtd += 1; mapa.set(chave, a);
 }
 
 /** "2026-04-15 16:37:02" → { chaveMes, dataBR, chaveOrd }. */
@@ -203,7 +240,7 @@ export async function produtos() {
 export async function comissoes({ inicio, fim } = {}) {
   if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
 
-  const texto = await chamarTexto("/export/commission.php", { date: rangeData(inicio, fim) });
+  const texto = await csvCacheado("/export/commission.php", rangeExport(inicio, fim));
   const { colunas, linhas } = parseCSV(texto);
 
   const colValor = acharColuna(colunas, ["comiss", "valor", "value", "total"]);
@@ -229,6 +266,59 @@ export async function comissoes({ inicio, fim } = {}) {
     colValor, colOper,
     itens: linhas.slice(0, 500),
     aviso: colValor ? null : "Não identifiquei a coluna de valor da comissão no CSV — confira docs/d9pro-endpoints.md.",
+  };
+}
+
+/**
+ * Vendas por produto e por data, a partir do relatório /export/orders.php.
+ * A coluna `conteudo` lista os itens do pedido; o faturamento por produto é
+ * rateado pelo total do pedido dividido entre seus itens (a quantidade é exata).
+ * Considera só pedidos válidos (coluna `pedidoValido` = 1).
+ */
+export async function vendas({ inicio, fim } = {}) {
+  if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
+
+  const texto = await csvCacheado("/export/orders.php", rangeExport(inicio, fim));
+  const { linhas } = parseCSV(texto);
+
+  const porProduto = new Map();
+  const porDia = new Map();
+  const porMes = new Map();
+  let faturamento = 0, pedidos = 0, itensVendidos = 0;
+
+  for (const l of linhas) {
+    if (String(l.pedidoValido) !== "1") continue; // só pedidos válidos
+    pedidos++;
+    const total = numeroBR(l.orderTotal);
+    faturamento += total;
+    const { chaveDia, chaveMes } = dataCSV(l.createTime);
+    acc(porDia, chaveDia, total);
+    acc(porMes, chaveMes, total);
+
+    const itens = parseConteudo(l.conteudo);
+    itensVendidos += itens.length;
+    const unit = itens.length ? total / itens.length : 0; // rateio por item
+    for (const it of itens) {
+      const k = it.nome || it.sku || "?";
+      const p = porProduto.get(k) || { nome: it.nome || k, sku: it.sku, quantidade: 0, faturamento: 0, pedidos: new Set() };
+      p.quantidade += 1; p.faturamento += unit; p.pedidos.add(l.orderId);
+      porProduto.set(k, p);
+    }
+  }
+
+  const produtos = [...porProduto.values()]
+    .map((p) => ({ nome: p.nome, sku: p.sku, quantidade: p.quantidade, faturamento: p.faturamento, pedidos: p.pedidos.size }))
+    .sort((a, b) => b.faturamento - a.faturamento);
+  const porMesArr = [...porMes.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([chave, v]) => ({ chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd }));
+  const porDiaArr = [...porDia.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([chave, v]) => ({ chave, valor: v.valor, qtd: v.qtd }));
+
+  return {
+    nome: "Healthycann",
+    periodo: `${inicio || ""} a ${fim || ""} — D9Pro`,
+    resumo: { faturamento, pedidos, itensVendidos },
+    produtos, porMes: porMesArr, porDia: porDiaArr,
   };
 }
 
