@@ -20,6 +20,10 @@ import { parseCSV, acharColuna, numeroBR } from "./csv.js";
 
 const API_URL = process.env.D9_API_URL || "";
 const API_TOKEN = process.env.D9_API_TOKEN || "";
+// Os relatórios /export/*.php são baixados via link e leem o token da QUERY.
+// Por padrão usa o mesmo token da API; se a exportação tiver token próprio,
+// defina D9_EXPORT_TOKEN.
+const EXPORT_TOKEN = process.env.D9_EXPORT_TOKEN || API_TOKEN;
 const STATUS_RECEBIDOS = new Set(
   (process.env.D9_STATUS_RECEBIDOS || "").split(",").map((s) => s.trim()).filter(Boolean)
 );
@@ -88,11 +92,17 @@ async function chamar(caminho, params = {}) {
   return json;
 }
 
-/** Chamada que devolve texto cru (para os relatórios CSV /export/*.php). */
+/** Chamada que devolve texto cru (para os relatórios CSV /export/*.php).
+ * Manda o token na QUERY (como o download via link) e também no header. */
 async function chamarTexto(caminho, params = {}) {
-  const resp = await fetch(montarUrl(caminho, params), { headers: { token: API_TOKEN } });
+  const resp = await fetch(montarUrl(caminho, { ...params, token: EXPORT_TOKEN }), { headers: { token: API_TOKEN } });
   if (!resp.ok) throw new Error(`D9Pro API HTTP ${resp.status} em ${caminho}`);
-  return resp.text();
+  const txt = await resp.text();
+  // Se vier HTML (ex.: página de login), o relatório não autenticou.
+  if (/^\s*<(?:!doctype|html)/i.test(txt)) {
+    throw new Error(`Relatório ${caminho} não autenticou (token de exportação?). Defina D9_EXPORT_TOKEN se a exportação tiver token próprio.`);
+  }
+  return txt;
 }
 
 // Cache simples (TTL) para os CSVs — evita rebaixar relatórios grandes a cada período.
