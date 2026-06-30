@@ -95,7 +95,9 @@ async function chamar(caminho, params = {}) {
 /** Chamada que devolve texto cru (para os relatórios CSV /export/*.php).
  * Manda o token na QUERY (como o download via link) e também no header. */
 async function chamarTexto(caminho, params = {}) {
-  const resp = await fetch(montarUrl(caminho, { ...params, token: EXPORT_TOKEN }), { headers: { token: API_TOKEN } });
+  // Espaços nas datas (s/e) como %20, igual ao link de download da D9Pro.
+  const href = montarUrl(caminho, { ...params, token: EXPORT_TOKEN }).toString().replace(/\+/g, "%20");
+  const resp = await fetch(href, { headers: { token: API_TOKEN } });
   if (!resp.ok) throw new Error(`D9Pro API HTTP ${resp.status} em ${caminho}`);
   const txt = await resp.text();
   // Se vier HTML (ex.: página de login), o relatório não autenticou.
