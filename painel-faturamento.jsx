@@ -194,6 +194,7 @@ function PeriodoBar({ periodo, onChange, onRecarregar }) {
     ["Mês passado", () => mesPassado()],
     ["Este ano", () => anoAtual()],
     ["12 meses", () => ultimos12()],
+    ["Tudo", () => tudo()],
   ];
   return (
     <div className="periodo-bar">
@@ -213,15 +214,15 @@ function PeriodoBar({ periodo, onChange, onRecarregar }) {
   );
 }
 
-function BarrasHorizontais({ dados, max }) {
+function BarrasHorizontais({ dados, max, fmt = brl, rotuloQtd = "ped." }) {
   const m = max || Math.max(1, ...dados.map((d) => d.valor));
   return (
     <div>
       {dados.map((d, i) => (
         <div key={i} style={{ marginBottom: 12 }}>
           <div className="bar-row">
-            <span>{d.label} <span style={{ color: C.mute }}>· {int(d.qtd)} ped.</span></span>
-            <b>{brl(d.valor)}</b>
+            <span>{d.label} <span style={{ color: C.mute }}>· {int(d.qtd)} {rotuloQtd}</span></span>
+            <b>{fmt(d.valor)}</b>
           </div>
           <div className="bar-track"><div className="bar-fill" style={{ width: (d.valor / m) * 100 + "%", background: d.cor || PALETA[i % PALETA.length] }} /></div>
         </div>
@@ -258,13 +259,16 @@ function ultimos12() {
   const h = new Date();
   return { inicio: fmtBR(new Date(h.getFullYear() - 1, h.getMonth(), 1)), fim: fmtBR(h) };
 }
+function tudo() {
+  return { inicio: "01/01/2015", fim: fmtBR(new Date()) };
+}
 
 /* ============================================================
    APP
    ============================================================ */
 export default function PainelFaturamento() {
   const [aba, setAba] = useState("resumo");
-  const [periodo, setPeriodo] = useState(() => anoAtual());
+  const [periodo, setPeriodo] = useState(() => tudo());
   const [dados, setDados] = useState(operacaoExemplo);
   const [resumo, setResumo] = useState(resumoExemplo);
   const [produtos, setProdutos] = useState(produtosExemplo);
@@ -412,44 +416,74 @@ export default function PainelFaturamento() {
           </>
         )}
 
-        {/* ---------- VISÃO GERAL ---------- */}
-        {aba === "visao" && (
+        {/* ---------- VISÃO GERAL (dashboard completo, do relatório de pedidos) ---------- */}
+        {aba === "visao" && (() => {
+          const vr = vendas.resumo || {};
+          const fr = (x) => int(x) + " fr.";
+          const topProd = [...(vendas.produtos || [])].sort((a, b) => (b.quantidade || 0) - (a.quantidade || 0));
+          const porFrascos = (arr, chave) => [...(arr || [])].sort((a, b) => (b.frascos || 0) - (a.frascos || 0)).map((x) => ({ label: x[chave], valor: x.frascos, qtd: x.qtd }));
+          return (
           <>
             <div className="kpis">
-              <Kpi label="Faturamento" valor={brlK(r.faturamento)} sub="Soma dos pedidos no período" />
-              <Kpi label="Recebido" valor={brlK(r.recebido)} sub={`${pctDe(r.recebido, r.faturamento)} do faturamento`} />
-              <Kpi label="A receber" valor={brlK(r.aReceber)} sub="Pedidos ainda não pagos/entregues" />
-              <Kpi label="Pedidos" valor={int(r.qtdPedidos)} sub="Quantidade no período" />
-              <Kpi label="Ticket médio" valor={brlK(r.ticketMedio)} sub="Faturamento ÷ pedidos" />
+              <Kpi label="Faturamento" valor={brlK(vr.faturamento)} sub="Todos os pedidos válidos" />
+              <Kpi label="Recebido" valor={brlK(vr.recebido)} sub={vr.faturamento ? `${pctDe(vr.recebido, vr.faturamento)} do faturamento` : "—"} />
+              <Kpi label="A receber" valor={brlK(vr.aReceber)} sub="Ainda não pagos/entregues" />
+              <Kpi label="Frascos vendidos" valor={int(vr.itensVendidos)} sub={`${int(vr.pedidos)} pedidos`} />
+              <Kpi label="Ticket médio" valor={brlK(vr.ticketMedio)} sub="Faturamento ÷ pedidos" />
             </div>
 
             <div className="panel" style={{ marginTop: 18 }}>
-              <div className="section-h">Faturamento por mês</div>
+              <div className="section-h">Faturamento e frascos por mês</div>
               <ResponsiveContainer width="100%" height={260}>
-                <ComposedChart data={dados.porMes || []}>
+                <ComposedChart data={vendas.porMes || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-                  <XAxis dataKey="mes" tick={{ fontSize: 12, fill: C.mute }} />
-                  <YAxis tickFormatter={(v) => "R$" + (v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
-                  <Tooltip formatter={(v, n) => (n === "valor" ? brl(v) : int(v))} />
-                  <Bar dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={34} />
-                  <Line dataKey="qtd" name="Pedidos" stroke={C.gold} strokeWidth={2} dot={{ r: 3 }} yAxisId={0} />
+                  <XAxis dataKey="mes" tick={{ fontSize: 11, fill: C.mute }} interval="preserveStartEnd" />
+                  <YAxis yAxisId="r" tickFormatter={(v) => "R$" + Math.round(v / 1000) + "k"} tick={{ fontSize: 11, fill: C.mute }} />
+                  <YAxis yAxisId="f" orientation="right" tick={{ fontSize: 11, fill: C.gold }} />
+                  <Tooltip formatter={(v, n) => (n === "Frascos" ? int(v) + " frascos" : brl(v))} />
+                  <Bar yAxisId="r" dataKey="valor" name="Faturamento" fill={C.emerald} radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="f" dataKey="frascos" name="Frascos" stroke={C.gold} strokeWidth={2} dot={{ r: 2 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
 
             <div className="grid2">
               <div className="panel">
-                <div className="section-h">Faturamento por status</div>
-                <BarrasHorizontais dados={(dados.porStatus || []).map((s) => ({ label: s.label, valor: s.valor, qtd: s.qtd, cor: s.recebido ? C.emerald : C.gold }))} />
-                <p className="note"><span style={{ color: C.emerald }}>■</span> recebido (pago/entregue) · <span style={{ color: C.gold }}>■</span> a receber</p>
+                <div className="section-h">Produtos mais vendidos (frascos)</div>
+                <BarrasHorizontais dados={topProd.slice(0, 8).map((p) => ({ label: p.nome, valor: p.quantidade, qtd: p.pedidos }))} fmt={fr} />
               </div>
               <div className="panel">
-                <div className="section-h">Por grupo de pedido</div>
-                <BarrasHorizontais dados={(dados.porGrupo || []).map((g) => ({ label: g.grupo, valor: g.valor, qtd: g.qtd }))} />
+                <div className="section-h">Frascos por vendedor</div>
+                <BarrasHorizontais dados={porFrascos(vendas.porVendedor, "nome").slice(0, 8)} fmt={fr} />
               </div>
             </div>
+
+            <div className="grid2">
+              <div className="panel">
+                <div className="section-h">Maiores prescritores (frascos)</div>
+                <BarrasHorizontais dados={porFrascos(vendas.porPrescritor, "nome").slice(0, 8)} fmt={fr} />
+              </div>
+              <div className="panel">
+                <div className="section-h">Por estado (UF) — frascos</div>
+                <BarrasHorizontais dados={porFrascos(vendas.porEstado, "uf").slice(0, 12)} fmt={fr} />
+              </div>
+            </div>
+
+            <div className="grid2">
+              <div className="panel">
+                <div className="section-h">Por cidade (top 10) — frascos</div>
+                <BarrasHorizontais dados={porFrascos(vendas.porCidade, "cidade").slice(0, 10)} fmt={fr} />
+              </div>
+              <div className="panel">
+                <div className="section-h">Por forma de pagamento — frascos</div>
+                <BarrasHorizontais dados={porFrascos(vendas.porPagamento, "forma")} fmt={fr} />
+              </div>
+            </div>
+
+            <p className="note">Todos os indicadores vêm do <b>relatório completo de pedidos</b> (não da lista paginada), respeitando o período selecionado. “Frascos por visitador” depende do módulo de Visitas (relatório à parte) — me avise se quiser ligar.</p>
           </>
-        )}
+          );
+        })()}
 
         {/* ---------- VENDAS (por produto e por data) ---------- */}
         {aba === "vendas" && (() => {

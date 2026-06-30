@@ -150,9 +150,9 @@ function dataCSV(createTime) {
   return { chaveDia: `${y}-${mo}-${d}`, chaveMes: `${y}-${mo}`, dataBR: `${d}/${mo}/${y}` };
 }
 
-function acc(mapa, chave, valor) {
-  const a = mapa.get(chave) || { valor: 0, qtd: 0 };
-  a.valor += valor || 0; a.qtd += 1; mapa.set(chave, a);
+function acc(mapa, chave, valor, frascos = 0) {
+  const a = mapa.get(chave) || { valor: 0, qtd: 0, frascos: 0 };
+  a.valor += valor || 0; a.qtd += 1; a.frascos += frascos || 0; mapa.set(chave, a);
 }
 
 /** "2026-04-15 16:37:02" → { chaveMes, dataBR, chaveOrd }. */
@@ -283,7 +283,11 @@ const META_MENSAL = Number(String(process.env.D9_META_MENSAL || "").replace(/\./
 export async function vendas({ inicio, fim } = {}) {
   if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
 
-  const texto = await csvCacheado("/export/orders.php", rangeExport(inicio, fim));
+  const [texto, statusResp] = await Promise.all([
+    csvCacheado("/export/orders.php", rangeExport(inicio, fim)),
+    chamar("/orders/status.php").catch(() => ({ data: [] })),
+  ]);
+  const cls = classificarStatus(statusResp.data || []);
   const validos = parseCSV(texto).linhas.filter((l) => String(l.pedidoValido) === "1");
 
   // Passo 1: preço e custo de referência por SKU (pedidos de um único SKU),
@@ -301,26 +305,30 @@ export async function vendas({ inicio, fim } = {}) {
   for (const k in refC) refC[k] /= refCN[k];
 
   const porProduto = new Map(), porEstado = new Map(), porPagamento = new Map(),
-    porPrescritor = new Map(), porGrupo = new Map(), porCidade = new Map();
+    porPrescritor = new Map(), porGrupo = new Map(), porCidade = new Map(), porVendedor = new Map();
   const porDia = new Map(), porMes = new Map();
-  let faturamento = 0, custo = 0, pedidos = 0, itensVendidos = 0;
+  let faturamento = 0, custo = 0, pedidos = 0, itensVendidos = 0, recebido = 0;
 
   for (const l of validos) {
     pedidos++;
     const total = numeroBR(l.orderTotal);
     const custoPed = numeroBR(l["custo total dos produtos"]);
     faturamento += total; custo += custoPed;
-    const { chaveDia, chaveMes } = dataCSV(l.createTime);
-    acc(porDia, chaveDia, total);
-    acc(porMes, chaveMes, total);
-    acc(porEstado, l.addressState || "—", total);
-    acc(porPagamento, rotuloPagamento(l.payMethod), total);
-    acc(porPrescritor, l["nome prescritor"] || "—", total);
-    acc(porGrupo, l.orderGroup || "—", total);
-    acc(porCidade, l.addressCity || "—", total);
+    if (cls.recebidos.has(String(l.oSId))) recebido += total;
 
     const itens = parseConteudo(l.conteudo);
-    itensVendidos += itens.length;
+    const frascos = itens.length; // cada item do pedido = 1 frasco/unidade
+    itensVendidos += frascos;
+
+    const { chaveDia, chaveMes } = dataCSV(l.createTime);
+    acc(porDia, chaveDia, total, frascos);
+    acc(porMes, chaveMes, total, frascos);
+    acc(porEstado, l.addressState || "—", total, frascos);
+    acc(porPagamento, rotuloPagamento(l.payMethod), total, frascos);
+    acc(porPrescritor, l["nome prescritor"] || "—", total, frascos);
+    acc(porGrupo, l.orderGroup || "—", total, frascos);
+    acc(porCidade, l.addressCity || "—", total, frascos);
+    acc(porVendedor, l.userRealName || "—", total, frascos);
     const wp = itens.map((i) => refP[i.sku] || 1); const sp = wp.reduce((a, b) => a + b, 0) || itens.length || 1;
     const wc = itens.map((i) => refC[i.sku] || 1); const sc = wc.reduce((a, b) => a + b, 0) || itens.length || 1;
     itens.forEach((it, i) => {
@@ -344,16 +352,16 @@ export async function vendas({ inicio, fim } = {}) {
   }).sort((a, b) => b.faturamento - a.faturamento);
 
   const lista = (m, chaveNome) => [...m.entries()]
-    .map(([k, v]) => ({ [chaveNome]: k, valor: v.valor, qtd: v.qtd }))
+    .map(([k, v]) => ({ [chaveNome]: k, valor: v.valor, qtd: v.qtd, frascos: v.frascos }))
     .sort((a, b) => b.valor - a.valor);
 
   const porMesArr = [...porMes.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([chave, v], i, arr) => {
       const prev = i > 0 ? arr[i - 1][1].valor : null;
-      return { chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd, variacao: prev ? (v.valor - prev) / prev : null };
+      return { chave, mes: rotuloMes(chave), valor: v.valor, qtd: v.qtd, frascos: v.frascos, variacao: prev ? (v.valor - prev) / prev : null };
     });
   const porDiaArr = [...porDia.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([chave, v]) => ({ chave, valor: v.valor, qtd: v.qtd }));
+    .map(([chave, v]) => ({ chave, valor: v.valor, qtd: v.qtd, frascos: v.frascos }));
 
   const lucro = faturamento - custo;
   return {
@@ -362,6 +370,7 @@ export async function vendas({ inicio, fim } = {}) {
     resumo: {
       faturamento, custo, lucro, margem: faturamento > 0 ? lucro / faturamento : null,
       pedidos, itensVendidos, ticketMedio: pedidos ? faturamento / pedidos : 0,
+      recebido, aReceber: faturamento - recebido,
       metaMensal: META_MENSAL,
     },
     produtos,
@@ -371,6 +380,7 @@ export async function vendas({ inicio, fim } = {}) {
     porPrescritor: lista(porPrescritor, "nome"),
     porGrupo: lista(porGrupo, "grupo"),
     porCidade: lista(porCidade, "cidade"),
+    porVendedor: lista(porVendedor, "nome"),
   };
 }
 
@@ -382,8 +392,8 @@ export async function vendas({ inicio, fim } = {}) {
 export async function resumo({ inicio, fim } = {}) {
   if (!configurado) throw new Error("D9Pro não configurado — defina D9_API_URL e D9_API_TOKEN no .env.");
 
-  const [listaResp, statusResp] = await Promise.all([
-    chamar("/orders/list.php", { oSId: 0, date: rangeData(inicio, fim), filters: "{}" }),
+  const [csvOrders, statusResp] = await Promise.all([
+    csvCacheado("/export/orders.php", rangeExport(inicio, fim)),
     chamar("/orders/status.php").catch(() => ({ data: [] })),
   ]);
   const cls = classificarStatus(statusResp.data || []);
@@ -392,14 +402,22 @@ export async function resumo({ inicio, fim } = {}) {
   let emTransito = 0;
   for (const id of cls.transito) emTransito += cls.meta[id]?.ordersHere || 0;
 
-  // Pedidos válidos do período (exclui cancelados).
-  const pedidos = (listaResp.data || [])
-    .map(normalizarPedido)
-    .filter((p) => !cls.excluidos.has(p.oSId));
-  const ultimosPedidos = [...pedidos]
-    .sort((a, b) => (b.chaveOrd || "").localeCompare(a.chaveOrd || ""))
+  // Pedidos do período vêm do relatório COMPLETO (não da lista paginada).
+  const ordens = parseCSV(csvOrders).linhas.filter((l) => String(l.pedidoValido) === "1");
+  const chaveOrd = (ct) => {
+    const m = String(ct || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2})?:?(\d{2})?/);
+    return m ? `${m[3]}${m[2]}${m[1]}${m[4] || "00"}${m[5] || "00"}` : "";
+  };
+  const pedidos = ordens.length;
+  const ultimosPedidos = [...ordens]
+    .sort((a, b) => chaveOrd(b.createTime).localeCompare(chaveOrd(a.createTime)))
     .slice(0, 8)
-    .map((p) => ({ orderId: p.orderId, cliente: p.cliente, cidade: p.cidade, uf: p.uf, data: p.dataBR, status: cls.labels[p.oSId] || p.status }));
+    .map((l) => ({
+      orderId: l.orderId, cliente: l.addressPersonName || l.cliente || "",
+      cidade: l.addressCity || "", uf: l.addressState || "",
+      data: (l.createTime || "").slice(0, 10),
+      status: l.orderStatus || cls.labels[String(l.oSId)] || "",
+    }));
 
   const avisos = [];
   let clientes = null, prescritores = null, ultimosClientes = [];
@@ -431,7 +449,7 @@ export async function resumo({ inicio, fim } = {}) {
   return {
     nome: "Healthycann",
     periodo: `${inicio || ""} a ${fim || ""} — D9Pro`,
-    kpis: { clientes, prescritores, pedidosPeriodo: pedidos.length, emTransito },
+    kpis: { clientes, prescritores, pedidosPeriodo: pedidos, emTransito },
     ultimosPedidos, ultimosClientes, avisos,
   };
 }

@@ -103,39 +103,46 @@ export async function vendas({ inicio, fim } = {}) {
     { nome: "HC PLUS+", sku: "PL2000", quantidade: 72, faturamento: 29452, custo: 5967, pedidos: 23, ticketMedio: 1281 },
     { nome: "HC FULL SPECTRUM NEW (6000mg CBD)", sku: "FS6000NEW", quantidade: 45, faturamento: 28860, custo: 5119, pedidos: 23, ticketMedio: 1255 },
   ];
-  const produtos = base.map((p) => ({ ...p, lucro: p.faturamento - p.custo, margem: (p.faturamento - p.custo) / p.faturamento }));
+  const produtos = base.map((p) => ({ ...p, frascos: p.quantidade, lucro: p.faturamento - p.custo, margem: (p.faturamento - p.custo) / p.faturamento }));
   const faturamento = produtos.reduce((s, p) => s + p.faturamento, 0);
   const custo = produtos.reduce((s, p) => s + p.custo, 0);
   const pedidos = 264;
+  const recebido = Math.round(faturamento * 0.9);
   const porMes = [
-    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 280, variacao: null },
-    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 320, variacao: 0.1667 },
-    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 981, variacao: 2.156 },
+    { chave: "2026-04", mes: "Abr/26", valor: 96000, qtd: 88, frascos: 280, variacao: null },
+    { chave: "2026-05", mes: "Mai/26", valor: 112000, qtd: 95, frascos: 320, variacao: 0.1667 },
+    { chave: "2026-06", mes: "Jun/26", valor: 353513, qtd: 316, frascos: 981, variacao: 2.156 },
   ];
   return {
     nome: "Healthycann",
     periodo: `${inicio || "01/06/2026"} a ${fim || "30/06/2026"} — dados de exemplo (mock)`,
-    resumo: { faturamento, custo, lucro: faturamento - custo, margem: (faturamento - custo) / faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos, metaMensal: 400000 },
+    resumo: { faturamento, custo, lucro: faturamento - custo, margem: (faturamento - custo) / faturamento, pedidos, itensVendidos: produtos.reduce((s, p) => s + p.quantidade, 0), ticketMedio: faturamento / pedidos, recebido, aReceber: faturamento - recebido, metaMensal: 400000 },
     produtos, porMes,
-    porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10 }, { chave: "2026-06-02", valor: 6200, qtd: 14 }, { chave: "2026-06-03", valor: 5400, qtd: 12 }],
-    porGrupo: [{ grupo: "Comum", valor: 325326, qtd: 295 }, { grupo: "Armazém", valor: 27313, qtd: 7 }, { grupo: "Comissão", valor: 874, qtd: 8 }],
+    porDia: [{ chave: "2026-06-01", valor: 4995, qtd: 10, frascos: 28 }, { chave: "2026-06-02", valor: 6200, qtd: 14, frascos: 35 }, { chave: "2026-06-03", valor: 5400, qtd: 12, frascos: 30 }],
+    porGrupo: [{ grupo: "Comum", valor: 325326, qtd: 295, frascos: 920 }, { grupo: "Armazém", valor: 27313, qtd: 7, frascos: 55 }, { grupo: "Comissão", valor: 874, qtd: 8, frascos: 6 }],
     porCidade: [
-      { cidade: "Balneário Camboriú", valor: 33923, qtd: 33 }, { cidade: "São Paulo", valor: 33596, qtd: 33 },
-      { cidade: "Itajaí", valor: 28414, qtd: 19 }, { cidade: "Rio de Janeiro", valor: 16216, qtd: 19 }, { cidade: "Itapema", valor: 10321, qtd: 7 },
+      { cidade: "Balneário Camboriú", valor: 33923, qtd: 33, frascos: 95 }, { cidade: "São Paulo", valor: 33596, qtd: 33, frascos: 90 },
+      { cidade: "Itajaí", valor: 28414, qtd: 19, frascos: 78 }, { cidade: "Rio de Janeiro", valor: 16216, qtd: 19, frascos: 44 }, { cidade: "Itapema", valor: 10321, qtd: 7, frascos: 28 },
     ],
     porEstado: [
-      { uf: "SC", valor: 116239, qtd: 102 }, { uf: "SP", valor: 77142, qtd: 68 },
-      { uf: "MG", valor: 61700, qtd: 43 }, { uf: "RJ", valor: 40348, qtd: 40 }, { uf: "PR", valor: 10607, qtd: 12 },
+      { uf: "SC", valor: 116239, qtd: 102, frascos: 320 }, { uf: "SP", valor: 77142, qtd: 68, frascos: 210 },
+      { uf: "MG", valor: 61700, qtd: 43, frascos: 168 }, { uf: "RJ", valor: 40348, qtd: 40, frascos: 110 }, { uf: "PR", valor: 10607, qtd: 12, frascos: 33 },
     ],
     porPagamento: [
-      { forma: "Cartão de crédito", valor: 205055, qtd: 169 },
-      { forma: "Não informado", valor: 146534, qtd: 145 },
-      { forma: "Boleto", valor: 1924, qtd: 2 },
+      { forma: "Cartão de crédito", valor: 205055, qtd: 169, frascos: 560 },
+      { forma: "Não informado", valor: 146534, qtd: 145, frascos: 400 },
+      { forma: "Boleto", valor: 1924, qtd: 2, frascos: 21 },
     ],
     porPrescritor: [
-      { nome: "Tatiana A. P. Moraes", valor: 35107, qtd: 20 },
-      { nome: "Fernando B. Aparecido", valor: 32328, qtd: 32 },
-      { nome: "Maria Cecilia I. Barbosa", valor: 25592, qtd: 21 },
+      { nome: "Tatiana A. P. Moraes", valor: 35107, qtd: 20, frascos: 96 },
+      { nome: "Fernando B. Aparecido", valor: 32328, qtd: 32, frascos: 88 },
+      { nome: "Maria Cecilia I. Barbosa", valor: 25592, qtd: 21, frascos: 70 },
+    ],
+    porVendedor: [
+      { nome: "Tatiana Aline Pivatto Moraes", valor: 142000, qtd: 110, frascos: 410 },
+      { nome: "Jeane Santana", valor: 98000, qtd: 82, frascos: 280 },
+      { nome: "Rosileia Galdino Maduenha", valor: 74000, qtd: 60, frascos: 200 },
+      { nome: "Danieli Pickering Melim", valor: 39512, qtd: 12, frascos: 91 },
     ],
   };
 }
